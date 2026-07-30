@@ -1,15 +1,19 @@
 import { useEffect, useRef, useState } from 'react'
 import ReactMarkdown from 'react-markdown'
 import { useShallow } from 'zustand/react/shallow'
+import { DndContext, TouchSensor, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core'
+import { SortableContext, verticalListSortingStrategy, arrayMove } from '@dnd-kit/sortable'
 import { useStore } from '../../store/useStore'
 import { CategoryPicker } from './CategoryPicker'
 import { PlayPauseButton } from './PlayPauseButton'
 import { AttachmentList } from './AttachmentList'
+import { SortableSubtaskRow } from './SortableSubtaskRow'
 import { ConfirmDialog } from '../boards/ConfirmDialog'
 import { flushAllDebouncers } from '../../store/persist'
 import { formatHHMM, parseHHMM } from '../../utils/time'
 import { blurOnEnter, blurOnCtrlEnter } from '../../utils/keyboard'
 import { buildGoogleCalendarUrl, downloadIcsFile } from '../../utils/calendarExport'
+import { LeftClickMouseSensor } from '../../utils/dndSensors'
 import type { Urgency, Importance, TaskStatus, RecurrenceUnit, TaskCard } from '../../types'
 
 interface TaskDetailModalProps {
@@ -52,6 +56,10 @@ export function TaskDetailModal({ taskId, onClose }: TaskDetailModalProps) {
   const [newSubtaskText, setNewSubtaskText] = useState('')
   const [snapshot, setSnapshot] = useState<TaskCard | null>(null)
   const nameInputRef = useRef<HTMLInputElement>(null)
+  const subtaskSensors = useSensors(
+    useSensor(LeftClickMouseSensor, { activationConstraint: { distance: 8 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 250, tolerance: 8 } }),
+  )
 
   // Newly-created tasks (from addTaskAtTop) start with an empty name — focus it immediately so
   // typing a name works right away instead of hitting global keyboard shortcuts.
@@ -141,6 +149,15 @@ export function TaskDetailModal({ taskId, onClose }: TaskDetailModalProps) {
     setElapsedTime(taskId, parsed)
   }
 
+  function handleSubtaskDragEnd(event: DragEndEvent) {
+    const { active, over } = event
+    if (!over || active.id === over.id) return
+    const oldIndex = task.subtasks.findIndex((s) => s.id === active.id)
+    const newIndex = task.subtasks.findIndex((s) => s.id === over.id)
+    if (oldIndex === -1 || newIndex === -1) return
+    updateTask(taskId, { subtasks: arrayMove(task.subtasks, oldIndex, newIndex) })
+  }
+
   return (
     <div
       className="fixed inset-0 z-40 flex bg-black/40 sm:items-center sm:justify-center sm:p-4"
@@ -172,6 +189,31 @@ export function TaskDetailModal({ taskId, onClose }: TaskDetailModalProps) {
             />
           </div>
           <div className="ml-3 flex flex-shrink-0 items-center gap-1">
+            <button
+              onClick={() => updateTask(taskId, { flaggedForToday: !task.flaggedForToday })}
+              aria-label={task.flaggedForToday ? 'Remove from Today' : 'Flag for Today'}
+              title={task.flaggedForToday ? 'Remove from Today' : 'Flag for Today'}
+              className={`rounded p-1 hover:bg-gray-100 dark:hover:bg-gray-800 ${
+                task.flaggedForToday
+                  ? 'text-blue-500 dark:text-blue-400'
+                  : 'text-gray-400 hover:text-gray-600 dark:hover:text-gray-200'
+              }`}
+            >
+              <svg
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill={task.flaggedForToday ? 'currentColor' : 'none'}
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden="true"
+              >
+                <path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z" />
+                <line x1="4" y1="22" x2="4" y2="4" />
+              </svg>
+            </button>
             <button
               onClick={() => setMaximized((v) => !v)}
               aria-label={maximized ? 'Minimize' : 'Maximize'}
@@ -474,36 +516,29 @@ export function TaskDetailModal({ taskId, onClose }: TaskDetailModalProps) {
         {!hiddenFields.includes('subtasks') && (
         <div className="mt-4">
           <h3 className="mb-2 text-sm text-gray-600 dark:text-gray-300">Sub-tasks</h3>
-          <div className="flex flex-col gap-1">
-            {task.subtasks.map((sub) => (
-              <div key={sub.id} className="flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  checked={sub.done}
-                  onChange={() =>
-                    updateTask(taskId, {
-                      subtasks: task.subtasks.map((s) => (s.id === sub.id ? { ...s, done: !s.done } : s)),
-                    })
-                  }
-                  className="h-4 w-4 flex-shrink-0 cursor-pointer"
-                />
-                <span
-                  className={`flex-1 text-sm ${
-                    sub.done ? 'text-gray-400 line-through dark:text-gray-500' : 'text-gray-900 dark:text-gray-100'
-                  }`}
-                >
-                  {sub.text}
-                </span>
-                <button
-                  onClick={() => updateTask(taskId, { subtasks: task.subtasks.filter((s) => s.id !== sub.id) })}
-                  aria-label={`Delete sub-task ${sub.text}`}
-                  className="text-xs text-gray-400 hover:text-red-500"
-                >
-                  ×
-                </button>
+          <DndContext sensors={subtaskSensors} onDragEnd={handleSubtaskDragEnd}>
+            <SortableContext items={task.subtasks.map((s) => s.id)} strategy={verticalListSortingStrategy}>
+              <div className="flex flex-col gap-1">
+                {task.subtasks.map((sub) => (
+                  <SortableSubtaskRow
+                    key={sub.id}
+                    subtask={sub}
+                    onToggleDone={() =>
+                      updateTask(taskId, {
+                        subtasks: task.subtasks.map((s) => (s.id === sub.id ? { ...s, done: !s.done } : s)),
+                      })
+                    }
+                    onRename={(text) =>
+                      updateTask(taskId, {
+                        subtasks: task.subtasks.map((s) => (s.id === sub.id ? { ...s, text } : s)),
+                      })
+                    }
+                    onDelete={() => updateTask(taskId, { subtasks: task.subtasks.filter((s) => s.id !== sub.id) })}
+                  />
+                ))}
               </div>
-            ))}
-          </div>
+            </SortableContext>
+          </DndContext>
           <form
             onSubmit={(e) => {
               e.preventDefault()

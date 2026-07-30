@@ -140,7 +140,10 @@ export function HowToView() {
           <p>Tag a task's urgency and importance from its extended view to prioritize and filter by them later.</p>
         </SubChapter>
         <SubChapter title="Sub-tasks">
-          <p>Break a task down into a checklist of smaller steps from its extended view.</p>
+          <p>
+            Break a task down into a checklist of smaller steps from its extended view. Double-click a sub-task
+            to rename it, and drag the handle next to it to reorder the list.
+          </p>
         </SubChapter>
         <SubChapter title="Descriptions">
           <p>
@@ -180,9 +183,16 @@ export function HowToView() {
       <Chapter title="Today view">
         <p>
           The <strong>Today</strong> tab (or the <strong>T</strong> key) is your daily agenda across all boards:
-          what's running right now, what's due today, what's overdue, what you've already completed today - and a
-          live total of the time you've tracked so far. If any timers are running, a banner at the top lets you
-          pause all of them (or just the ones that have been running unusually long) in one click.
+          what's running right now, what's flagged, what's due today, what's overdue, what you've already
+          completed today - and a live total of the time you've tracked so far. If any timers are running, a
+          banner at the top lets you pause all of them (or just the ones that have been running unusually long)
+          in one click.
+        </p>
+        <p>
+          Don't use time tracking or due dates? Click the flag icon in a task card's top-right corner (or the
+          same icon in its extended view) to put it on today's list directly, no timer or date required. A
+          flagged task keeps showing up in Today until you unflag it or complete it - and if you complete it
+          today, it stays visible (checked off) for the rest of the day instead of disappearing immediately.
         </p>
       </Chapter>
 

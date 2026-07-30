@@ -3,7 +3,6 @@ import { useShallow } from 'zustand/react/shallow'
 import {
   DndContext,
   DragOverlay,
-  MouseSensor,
   TouchSensor,
   MeasuringStrategy,
   closestCorners,
@@ -25,6 +24,7 @@ import { CategoryManager } from './CategoryManager'
 import { completedDroppableId } from './CompletedSection'
 import { TaskCardMini } from '../task/TaskCardMini'
 import { bucketWidthClass } from '../../utils/bucketWidth'
+import { LeftClickMouseSensor } from '../../utils/dndSensors'
 
 interface BoardDetailViewProps {
   boardId: string
@@ -62,9 +62,10 @@ export function BoardDetailView({ boardId, onBack, onOpenTask }: BoardDetailView
   const [collapsedBucketIds, setCollapsedBucketIds] = useState<Set<string>>(new Set())
 
   // Mouse drags on an 8px threshold (unchanged desktop feel); touch requires a ~250ms press-and-hold
-  // so a quick tap opens a task and normal scrolling isn't hijacked into a drag.
+  // so a quick tap opens a task and normal scrolling isn't hijacked into a drag. Left-click only —
+  // the middle/wheel button is reserved for panning across the board, not dragging.
   const sensors = useSensors(
-    useSensor(MouseSensor, { activationConstraint: { distance: 8 } }),
+    useSensor(LeftClickMouseSensor, { activationConstraint: { distance: 8 } }),
     useSensor(TouchSensor, { activationConstraint: { delay: 250, tolerance: 8 } }),
   )
 

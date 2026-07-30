@@ -82,6 +82,8 @@ export interface TaskCard {
   timer: TimerState
   createdAt: number
   completedAt: number | null
+  /** manually flagged for the Today view, independent of due dates or time tracking */
+  flaggedForToday: boolean
 }
 
 export interface Attachment {

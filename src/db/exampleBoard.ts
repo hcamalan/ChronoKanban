@@ -350,6 +350,7 @@ export function buildExampleBoardData(): {
       timer,
       createdAt,
       completedAt,
+      flaggedForToday: false,
     }
     tasks.push(task)
   })

@@ -19,6 +19,7 @@ export function TaskCardMini({ task, onClick, selectMode, selected, onToggleSele
   const pauseTimer = useStore((s) => s.pauseTimer)
   const completeTask = useStore((s) => s.completeTask)
   const uncompleteTask = useStore((s) => s.uncompleteTask)
+  const updateTask = useStore((s) => s.updateTask)
   const dateFormat = useStore((s) => s.preferences.dateFormat)
   const colorMode = useStore((s) => s.preferences.colorMode)
   const showDescriptionOnCard = useStore((s) => s.preferences.showDescriptionOnCard)
@@ -34,7 +35,7 @@ export function TaskCardMini({ task, onClick, selectMode, selected, onToggleSele
   return (
     <div
       onClick={selectMode ? onToggleSelect : onClick}
-      className={`flex cursor-pointer flex-col gap-1.5 rounded-md border border-gray-200 p-2.5 text-left shadow-sm hover:shadow dark:border-gray-700 ${
+      className={`relative flex cursor-pointer flex-col gap-1.5 rounded-md border border-gray-200 p-2.5 text-left shadow-sm hover:shadow dark:border-gray-700 ${
         !isCompleted && task.timer.isRunning
           ? longRunning
             ? 'bg-amber-50 dark:bg-amber-950/40'
@@ -42,7 +43,35 @@ export function TaskCardMini({ task, onClick, selectMode, selected, onToggleSele
           : 'bg-white dark:bg-gray-900'
       } ${isCompleted ? 'opacity-60' : ''}`}
     >
-      <div className="flex items-start gap-2">
+      <button
+        onClick={(e) => {
+          e.stopPropagation()
+          updateTask(task.id, { flaggedForToday: !task.flaggedForToday })
+        }}
+        aria-label={task.flaggedForToday ? 'Remove from Today' : 'Flag for Today'}
+        title={task.flaggedForToday ? 'Remove from Today' : 'Flag for Today'}
+        className={`absolute right-2 top-2 ${
+          task.flaggedForToday
+            ? 'text-blue-500 dark:text-blue-400'
+            : 'text-gray-300 hover:text-gray-400 dark:text-gray-600 dark:hover:text-gray-500'
+        }`}
+      >
+        <svg
+          width="16"
+          height="16"
+          viewBox="0 0 24 24"
+          fill={task.flaggedForToday ? 'currentColor' : 'none'}
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          aria-hidden="true"
+        >
+          <path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z" />
+          <line x1="4" y1="22" x2="4" y2="4" />
+        </svg>
+      </button>
+      <div className="flex items-start gap-2 pr-6">
         {selectMode ? (
           <input
             type="checkbox"

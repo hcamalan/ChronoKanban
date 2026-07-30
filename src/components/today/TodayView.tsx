@@ -60,12 +60,21 @@ export function TodayView({ onOpenTask }: TodayViewProps) {
   const open = tasks.filter((t) => t.status !== 'completed')
 
   const running = tasks.filter((t) => t.timer.isRunning && t.status !== 'completed')
+  // Flagged tasks stay visible if completed today (so checking one off doesn't make it vanish
+  // mid-session), but drop off once a day has passed since completion.
+  const flagged = tasks.filter(
+    (t) => t.flaggedForToday && (t.status !== 'completed' || (t.completedAt != null && t.completedAt >= startOfToday)),
+  )
   const dueToday = open.filter((t) => t.dueDate === todayKey)
   const overdue = open.filter((t) => isLate(t))
   const completedToday = tasks.filter((t) => t.completedAt != null && t.completedAt >= startOfToday)
 
   const nothingToShow =
-    running.length === 0 && dueToday.length === 0 && overdue.length === 0 && completedToday.length === 0
+    running.length === 0 &&
+    flagged.length === 0 &&
+    dueToday.length === 0 &&
+    overdue.length === 0 &&
+    completedToday.length === 0
   const runningBoardCount = new Set(running.map((t) => t.boardId)).size
 
   return (
@@ -87,13 +96,15 @@ export function TodayView({ onOpenTask }: TodayViewProps) {
       </div>
 
       <TaskSection title="Now running" tasks={running} onOpenTask={onOpenTask} />
+      <TaskSection title="Flagged" tasks={flagged} onOpenTask={onOpenTask} />
       <TaskSection title="Due today" tasks={dueToday} onOpenTask={onOpenTask} />
       <TaskSection title="Overdue" tasks={overdue} onOpenTask={onOpenTask} />
       <TaskSection title="Completed today" tasks={completedToday} onOpenTask={onOpenTask} />
 
       {nothingToShow && (
         <p className="text-sm text-gray-500 dark:text-gray-400">
-          Nothing on your plate for today — start a timer on a task or set a due date, and it will show up here.
+          Nothing on your plate for today — start a timer on a task, flag one for Today, or set a due date, and
+          it will show up here.
         </p>
       )}
     </div>

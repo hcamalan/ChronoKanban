@@ -132,7 +132,12 @@ export const useStore = create<AppState>((set, get) => {
       boards: Object.fromEntries(boards.map((b) => [b.id, b])),
       buckets: Object.fromEntries(buckets.map((b) => [b.id, b])),
       // Tasks persisted before newer fields existed lack them entirely — backfill defaults.
-      tasks: Object.fromEntries(tasks.map((t) => [t.id, { ...t, estimatedHours: t.estimatedHours ?? null }])),
+      tasks: Object.fromEntries(
+        tasks.map((t) => [
+          t.id,
+          { ...t, estimatedHours: t.estimatedHours ?? null, flaggedForToday: t.flaggedForToday ?? false },
+        ]),
+      ),
       categories: Object.fromEntries(categories.map((c) => [c.id, c])),
       loaded: true,
     })
@@ -339,6 +344,7 @@ export const useStore = create<AppState>((set, get) => {
       timer: { isRunning: false, elapsedSeconds: 0, startedAt: null },
       createdAt: Date.now(),
       completedAt: null,
+      flaggedForToday: false,
     }
     set((state) => ({ tasks: { ...state.tasks, [id]: task } }))
     repo.putTask(task)
@@ -367,6 +373,7 @@ export const useStore = create<AppState>((set, get) => {
       timer: { isRunning: false, elapsedSeconds: 0, startedAt: null },
       createdAt: Date.now(),
       completedAt: null,
+      flaggedForToday: false,
     }
     // Shift every other active task in this bucket down by one to make room at the top —
     // completed tasks keep their own separate order sequence, same convention as moveTask.
