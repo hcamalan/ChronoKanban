@@ -189,6 +189,11 @@ export function HowToView() {
           in one click.
         </p>
         <p>
+          Use the <strong>Boards</strong> filter to check individual boards in or out - leave nothing checked to
+          see everything, or narrow it down to just the boards you care about right now. The tracked-time total
+          and "pause all" also follow whatever the filter is currently showing.
+        </p>
+        <p>
           Don't use time tracking or due dates? Click the flag icon in a task card's top-right corner (or the
           same icon in its extended view) to put it on today's list directly, no timer or date required. A
           flagged task keeps showing up in Today until you unflag it or complete it - and if you complete it

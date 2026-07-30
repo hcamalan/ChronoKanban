@@ -3,6 +3,7 @@ import { useShallow } from 'zustand/react/shallow'
 import { useStore } from '../../store/useStore'
 import { TaskCardMini } from '../task/TaskCardMini'
 import { RunningTimersBanner } from '../boards/RunningTimersBanner'
+import { MultiSelectDropdown } from '../dashboard/MultiSelectDropdown'
 import { buildDailyWorkSummary, type WorkInterval } from '../../db/activityLog'
 import { todayDateKey } from '../../utils/calendarRange'
 import { formatDuration, isLate } from '../../utils/time'
@@ -29,10 +30,16 @@ function TaskSection({ title, tasks, onOpenTask }: { title: string; tasks: TaskC
 }
 
 export function TodayView({ onOpenTask }: TodayViewProps) {
-  const tasks = useStore(useShallow((s) => Object.values(s.tasks)))
-  const pauseAllTimers = useStore((s) => s.pauseAllTimers)
+  const allTasks = useStore(useShallow((s) => Object.values(s.tasks)))
+  const boards = useStore(useShallow((s) => Object.values(s.boards).sort((a, b) => a.order - b.order)))
+  const pauseTimer = useStore((s) => s.pauseTimer)
   const [todaySeconds, setTodaySeconds] = useState<number | null>(null)
   const [tick, setTick] = useState(0)
+  const [selectedBoardIds, setSelectedBoardIds] = useState<string[]>([])
+
+  // Empty selection means "no filter" (all boards), same convention as the Dashboard's filters.
+  const tasks =
+    selectedBoardIds.length === 0 ? allTasks : allTasks.filter((t) => selectedBoardIds.includes(t.boardId))
 
   useEffect(() => {
     const interval = setInterval(() => setTick((n) => n + 1), 60_000)
@@ -48,12 +55,25 @@ export function TodayView({ onOpenTask }: TodayViewProps) {
     buildDailyWorkSummary(runningIntervals).then((summary) => {
       if (cancelled) return
       const perTask = summary.seconds.get(todayDateKey())
-      setTodaySeconds(perTask ? [...perTask.values()].reduce((a, b) => a + b, 0) : 0)
+      if (!perTask) {
+        setTodaySeconds(0)
+      } else if (selectedBoardIds.length === 0) {
+        // No board filter — sum everything, same as before (this also counts time logged
+        // against tasks that have since been deleted, which have no board to filter by anyway).
+        setTodaySeconds([...perTask.values()].reduce((a, b) => a + b, 0))
+      } else {
+        const allowedTaskIds = new Set(tasks.map((t) => t.id))
+        let sum = 0
+        for (const [taskId, seconds] of perTask) {
+          if (allowedTaskIds.has(taskId)) sum += seconds
+        }
+        setTodaySeconds(sum)
+      }
     })
     return () => {
       cancelled = true
     }
-  }, [tasks, tick])
+  }, [tasks, selectedBoardIds, tick])
 
   const todayKey = todayDateKey()
   const startOfToday = new Date(new Date().setHours(0, 0, 0, 0)).getTime()
@@ -79,7 +99,11 @@ export function TodayView({ onOpenTask }: TodayViewProps) {
 
   return (
     <div className="mx-auto max-w-5xl p-4 sm:p-6">
-      <RunningTimersBanner tasks={running} boardCount={runningBoardCount} onPauseAll={() => pauseAllTimers()} />
+      <RunningTimersBanner
+        tasks={running}
+        boardCount={runningBoardCount}
+        onPauseAll={() => running.forEach((t) => pauseTimer(t.id))}
+      />
       <div className="mb-6 flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="text-2xl font-semibold text-gray-900 dark:text-gray-100">Today</h1>
@@ -87,10 +111,18 @@ export function TodayView({ onOpenTask }: TodayViewProps) {
             {new Date().toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })}
           </p>
         </div>
-        <div className="rounded-lg border border-gray-200 bg-white px-4 py-2 text-right dark:border-gray-700 dark:bg-gray-900">
-          <div className="text-xs text-gray-500 dark:text-gray-400">Tracked today</div>
-          <div className="font-mono text-lg font-semibold text-gray-900 dark:text-gray-100">
-            {todaySeconds != null ? formatDuration(todaySeconds) : '—'}
+        <div className="flex items-center gap-2">
+          <MultiSelectDropdown
+            label="Boards"
+            options={boards.map((b) => ({ value: b.id, label: b.name }))}
+            selected={selectedBoardIds}
+            onChange={setSelectedBoardIds}
+          />
+          <div className="rounded-lg border border-gray-200 bg-white px-4 py-2 text-right dark:border-gray-700 dark:bg-gray-900">
+            <div className="text-xs text-gray-500 dark:text-gray-400">Tracked today</div>
+            <div className="font-mono text-lg font-semibold text-gray-900 dark:text-gray-100">
+              {todaySeconds != null ? formatDuration(todaySeconds) : '—'}
+            </div>
           </div>
         </div>
       </div>
@@ -103,8 +135,9 @@ export function TodayView({ onOpenTask }: TodayViewProps) {
 
       {nothingToShow && (
         <p className="text-sm text-gray-500 dark:text-gray-400">
-          Nothing on your plate for today — start a timer on a task, flag one for Today, or set a due date, and
-          it will show up here.
+          {selectedBoardIds.length > 0
+            ? "Nothing here for the boards you've selected — check the Boards filter above, or start a timer, flag a task, or set a due date."
+            : 'Nothing on your plate for today — start a timer on a task, flag one for Today, or set a due date, and it will show up here.'}
         </p>
       )}
     </div>
