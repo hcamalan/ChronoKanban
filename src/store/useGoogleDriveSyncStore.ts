@@ -12,7 +12,6 @@ import {
   writeFileContent,
   isFileGoneError,
 } from '../db/googleDriveApi'
-import { openPicker } from '../db/googleDrivePicker'
 import {
   getDriveIds,
   saveDriveIds,
@@ -22,7 +21,7 @@ import {
   getDriveWasConnected,
   setDriveWasConnected,
 } from '../db/googleDriveStorage'
-import { isGoogleDriveConfigured, isGooglePickerConfigured } from '../config/googleDrive'
+import { isGoogleDriveConfigured } from '../config/googleDrive'
 
 const POLL_INTERVAL_MS = 2 * 60 * 1000
 
@@ -37,10 +36,8 @@ interface GoogleDriveSyncState {
   status: GoogleDriveSyncStatus
   lastSyncedAt: string | null
   newerVersionAvailable: boolean
-  pickerError: string | null
   init: () => Promise<void>
-  connectNew: () => Promise<void>
-  connectExisting: () => Promise<void>
+  connect: () => Promise<void>
   reconnect: () => Promise<void>
   pullLatest: () => Promise<void>
   disconnect: () => Promise<void>
@@ -171,7 +168,6 @@ export const useGoogleDriveSyncStore = create<GoogleDriveSyncState>((set) => ({
   status: isGoogleDriveConfigured ? 'unconfigured' : 'notConfigured',
   lastSyncedAt: null,
   newerVersionAvailable: false,
-  pickerError: null,
 
   init: async () => {
     if (!isGoogleDriveConfigured) return
@@ -199,7 +195,7 @@ export const useGoogleDriveSyncStore = create<GoogleDriveSyncState>((set) => ({
   },
 
   /** Creates (or reuses) the app's own "ChronoKanban" folder + file. */
-  connectNew: async () => {
+  connect: async () => {
     if (!isGoogleDriveConfigured) return
     if (useAutoSyncStore.getState().status === 'connected') {
       await useAutoSyncStore.getState().disconnect()
@@ -207,32 +203,6 @@ export const useGoogleDriveSyncStore = create<GoogleDriveSyncState>((set) => ({
     const token = await getAccessToken({ silent: false })
     folderId = await findOrCreateFolder(token)
     fileId = await findSyncFile(token, folderId)
-    await syncOnConnect(token)
-    await finishConnecting()
-  },
-
-  /** Joins a file a teammate shared with you, picked via Google Picker — no folder needed, only ever updates it. */
-  connectExisting: async () => {
-    if (!isGoogleDriveConfigured || !isGooglePickerConfigured) return
-    if (useAutoSyncStore.getState().status === 'connected') {
-      await useAutoSyncStore.getState().disconnect()
-    }
-    const token = await getAccessToken({ silent: false })
-    const picked = await openPicker(token)
-    if (!picked) return // cancelled
-
-    set({ pickerError: null })
-    try {
-      const text = await downloadFileContent(token, picked.fileId)
-      const file = new File([text], picked.fileName, { type: 'application/json' })
-      await parseImportFile(file) // validation only — throws if this isn't a real ChronoKanban export
-    } catch {
-      set({ pickerError: `"${picked.fileName}" doesn't look like a ChronoKanban sync file. Try picking again.` })
-      return
-    }
-
-    folderId = null
-    fileId = picked.fileId
     await syncOnConnect(token)
     await finishConnecting()
   },
@@ -276,6 +246,6 @@ export const useGoogleDriveSyncStore = create<GoogleDriveSyncState>((set) => ({
     clearAccessToken()
     await clearDriveIds()
     await setDriveWasConnected(false)
-    set({ status: 'unconfigured', lastSyncedAt: null, newerVersionAvailable: false, pickerError: null })
+    set({ status: 'unconfigured', lastSyncedAt: null, newerVersionAvailable: false })
   },
 }))

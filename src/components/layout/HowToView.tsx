@@ -296,15 +296,6 @@ export function HowToView() {
           hour at a time, and re-signing in is usually silent but occasionally needs a click.
         </p>
         <p>
-          Google Drive sync can also be shared: connecting for the first time offers a choice between{' '}
-          <strong>Create new sync file</strong> (today's behavior) and <strong>Open a shared file…</strong>, for
-          joining a file someone else already created and shared with you (as an Editor, from Drive's own sharing
-          UI). This makes a small-team shared board possible, but it's still the same full-replace, newest-wins
-          sync described above with no real merge - if you and a teammate both edit around the same time,
-          whoever's change syncs last overwrites the other's. Fine with one person using it at a time; worth
-          knowing about before relying on it for simultaneous editing.
-        </p>
-        <p>
           The first time you use ChronoKanban, a one-time banner also nudges you to back up early - export once
           or dismiss it and it won't show again.
         </p>

@@ -5,7 +5,7 @@ const FILE_ID_KEY = 'driveFileId'
 const LAST_SYNCED_AT_KEY = 'driveLastSyncedAt'
 const WAS_CONNECTED_KEY = 'driveWasConnected'
 
-/** `folderId` is null for a file joined via Picker (see `connectExisting`) — only ever needed to create a brand-new file. */
+/** `folderId` is only needed to create a brand-new file, so it may be absent; `fileId` is the defining key. */
 export async function getDriveIds(): Promise<{ folderId: string | null; fileId: string } | undefined> {
   const db = await getDB()
   const fileId = (await db.get('appSettings', FILE_ID_KEY)) as string | undefined

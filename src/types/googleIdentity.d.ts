@@ -19,16 +19,12 @@ interface GoogleTokenClient {
   requestAccessToken(overrideConfig?: { prompt?: string }): void
 }
 
-// Named (rather than inline) so googlePicker.d.ts can merge its own members into the same
-// `window.google` namespace instead of redeclaring `Window.google` with a conflicting shape.
-interface GoogleGlobalNamespace {
-  accounts: {
-    oauth2: {
-      initTokenClient(config: GoogleTokenClientConfig): GoogleTokenClient
+interface Window {
+  google?: {
+    accounts: {
+      oauth2: {
+        initTokenClient(config: GoogleTokenClientConfig): GoogleTokenClient
+      }
     }
   }
-}
-
-interface Window {
-  google?: GoogleGlobalNamespace
 }
