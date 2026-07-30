@@ -19,6 +19,10 @@ export function Footer() {
           className="underline hover:text-gray-700 dark:hover:text-gray-200"
         >
           CC BY 4.0
+        </a>{' '}
+        ·{' '}
+        <a href="./privacy.html" className="underline hover:text-gray-700 dark:hover:text-gray-200">
+          Privacy Policy
         </a>
       </p>
     </footer>
