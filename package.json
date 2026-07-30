@@ -19,6 +19,8 @@
     "react-dom": "^19.2.7",
     "react-markdown": "^10.1.0",
     "recharts": "^3.9.2",
+    "y-indexeddb": "^9.0.12",
+    "yjs": "^13.6.31",
     "zustand": "^5.0.14"
   },
   "devDependencies": {
