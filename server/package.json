@@ -8,13 +8,10 @@
     "start": "node index.js"
   },
   "dependencies": {
-    "@y/websocket-server": "^0.1.5",
+    "lib0": "^0.2.99",
     "ws": "^8.21.1",
     "y-leveldb": "^0.2.0",
-    "yjs": "14.0.0-16"
-  },
-  "comment": "The server runs internally on one yjs (14, matching @y/websocket-server's pin) — the override forces y-leveldb onto it too, so there's a single yjs instance in the process (no instanceof/persistence breakage). Browser clients stay on yjs 13; they interoperate because Yjs's update binary format is stable across 13<->14.",
-  "overrides": {
-    "yjs": "$yjs"
+    "y-protocols": "^1.0.6",
+    "yjs": "^13.6.31"
   }
 }
