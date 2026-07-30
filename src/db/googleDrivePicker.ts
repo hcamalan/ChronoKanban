@@ -1,4 +1,4 @@
-import { GOOGLE_API_KEY } from '../config/googleDrive'
+import { GOOGLE_API_KEY, GOOGLE_APP_ID } from '../config/googleDrive'
 
 const GAPI_SCRIPT_SRC = 'https://apis.google.com/js/api.js'
 
@@ -46,11 +46,23 @@ export async function openPicker(token: string): Promise<PickedFile | null> {
   const picker = window.google.picker
 
   return new Promise((resolve) => {
-    const view = new picker.DocsView(picker.ViewId.DOCS).setMimeTypes('application/json')
+    // Two views so the joiner can find the file whether it's in their own Drive or (the usual
+    // team case) shared with them by whoever created it.
+    const myDriveView = new picker.DocsView(picker.ViewId.DOCS)
+      .setOwnedByMe(true)
+      .setMimeTypes('application/json')
+    const sharedView = new picker.DocsView(picker.ViewId.DOCS)
+      .setOwnedByMe(false)
+      .setMimeTypes('application/json')
     const builder = new picker.PickerBuilder()
-      .addView(view)
+      .addView(myDriveView)
+      .addView(sharedView)
       .setOAuthToken(token)
       .setDeveloperKey(GOOGLE_API_KEY)
+      // Required for the app to actually get drive.file access to a file the user picks but
+      // didn't create (e.g. one a teammate shared with them) — without it the follow-up Drive
+      // call to that file 404s.
+      .setAppId(GOOGLE_APP_ID)
       .setCallback((data) => {
         if (data.action === picker.Action.PICKED && data.docs?.[0]) {
           resolve({ fileId: data.docs[0].id, fileName: data.docs[0].name })

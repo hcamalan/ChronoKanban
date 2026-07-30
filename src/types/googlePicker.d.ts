@@ -14,6 +14,7 @@ interface GooglePickerResponseObject {
 
 interface GooglePickerView {
   setMimeTypes(mimeTypes: string): GooglePickerView
+  setOwnedByMe(ownedByMe: boolean): GooglePickerView
 }
 
 interface GooglePicker {
@@ -24,6 +25,9 @@ interface GooglePickerBuilder {
   addView(view: GooglePickerView): GooglePickerBuilder
   setOAuthToken(token: string): GooglePickerBuilder
   setDeveloperKey(key: string): GooglePickerBuilder
+  // The Cloud project number; required for the app to be granted drive.file access to a file the
+  // user picks that they didn't create themselves (e.g. one a teammate shared with them).
+  setAppId(appId: string): GooglePickerBuilder
   setCallback(callback: (data: GooglePickerResponseObject) => void): GooglePickerBuilder
   build(): GooglePicker
 }

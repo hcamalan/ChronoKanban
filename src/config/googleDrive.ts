@@ -21,6 +21,13 @@ export const GOOGLE_CLIENT_ID = '230209780222-6nl3cd98o6ari86a5ppok2skkag6e270.a
 
 export const GOOGLE_API_KEY = ''
 
+/**
+ * The Cloud project number, which is the numeric prefix of the OAuth client ID
+ * (Google client IDs are always `PROJECTNUMBER-hash.apps.googleusercontent.com`). Passed to the
+ * Picker so the app is granted drive.file access to files a teammate shared with the user.
+ */
+export const GOOGLE_APP_ID = GOOGLE_CLIENT_ID.split('-')[0]
+
 export const GOOGLE_DRIVE_SCOPE = 'https://www.googleapis.com/auth/drive.file'
 
 export const isGoogleDriveConfigured = GOOGLE_CLIENT_ID.trim().length > 0
