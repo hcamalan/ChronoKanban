@@ -1,5 +1,6 @@
 import * as Y from 'yjs'
 import { IndexeddbPersistence } from 'y-indexeddb'
+import { WebsocketProvider } from 'y-websocket'
 import * as repo from '../db/repository'
 import { buildExampleBoardData, hasSeededExampleBefore, markExampleSeeded } from '../db/exampleBoard'
 import { getEntityMap, ENTITY_KEYS } from './schema'
@@ -7,17 +8,30 @@ import { transact, observeSlice, snapshotSlice, type Ops } from './bridge'
 import type { Board, Bucket, TaskCard, Category } from '../types'
 
 /**
- * The app's single collaborative Y.Doc + its local (IndexedDB) persistence. In this single-client
- * phase the doc is the source of truth for boards/buckets/tasks/categories; a later phase adds a
- * websocket provider on top of the same doc for real-time sharing. Attachments and the activity
- * log stay in their own IndexedDB stores (via repository), and preferences stay in localStorage.
+ * The app's single collaborative Y.Doc. `y-indexeddb` is always the local/offline cache and, when
+ * no server is configured, the sole source of truth (Phase-1 local-only behavior). When a server
+ * URL is provided (VITE_COLLAB_SERVER), a `y-websocket` provider attaches to the SAME doc for
+ * real-time multi-user sync — both persistences coexist and merge via Yjs. Attachments and the
+ * activity log stay in their own IndexedDB stores (via repository); preferences stay in localStorage.
  */
 
 const ROOM = 'chronokanban'
 const MIGRATED_KEY = 'chrono-kanban-yjs-migrated'
 
+const SERVER_URL = (import.meta.env.VITE_COLLAB_SERVER as string | undefined)?.trim() || undefined
+/** True when connected to a shared server (team mode) vs. purely local. */
+export const isTeamMode = !!SERVER_URL
+
 export const doc = new Y.Doc()
 const persistence = new IndexeddbPersistence(ROOM, doc)
+
+let wsProvider: WebsocketProvider | null = null
+if (SERVER_URL) {
+  wsProvider = new WebsocketProvider(SERVER_URL, ROOM, doc)
+  wsProvider.on('status', (event: { status: string }) => {
+    console.log(`[collab] server ${event.status}`)
+  })
+}
 
 /** Run one or many entity writes in a single transaction (see bridge `transact`). */
 export function mutate(fn: (ops: Ops) => void): void {
@@ -82,7 +96,10 @@ type SliceSetter = (partial: {
 export async function initCollab(set: SliceSetter): Promise<void> {
   await persistence.whenSynced
 
-  if (getEntityMap(doc, 'boards').size === 0) {
+  // Only seed/migrate in local mode. In team mode the server is the source of truth: skip it and
+  // let the websocket provider stream the shared state in (a joiner must not seed the example
+  // board and then conflict with the server's real data).
+  if (!isTeamMode && getEntityMap(doc, 'boards').size === 0) {
     if (localStorage.getItem(MIGRATED_KEY) !== 'true') {
       const migrated = await migrateFromRepo()
       // Mark attempted regardless, so deleting all boards later doesn't re-resurrect old data.

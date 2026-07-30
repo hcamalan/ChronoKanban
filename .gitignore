@@ -12,6 +12,9 @@ dist
 dist-ssr
 *.local
 
+# Collab server runtime data (self-hosted LevelDB store)
+server/data
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
