@@ -29,6 +29,10 @@ npm run build
 
 Deploys to GitHub Pages automatically via `.github/workflows/deploy.yml` on push to `main`.
 
+## Google integration
+
+The Google OAuth client ID and API key committed in `src/config/googleDrive.ts` are **intentionally public**, not a leak. A client-only app with no backend has to ship them in the browser bundle, and Google designs both as public identifiers rather than secrets. Neither grants access to any user's data: the API key is restricted to the Picker API and to this site's origin, and all Google Drive access is authorized by each user's own OAuth token (kept only in memory, scoped to the `drive.file` files they explicitly pick or that the app itself creates). See the comment in that file for the full reasoning.
+
 ## License
 
 [CC BY 4.0](LICENSE) — © Hüseyin Camalan.
