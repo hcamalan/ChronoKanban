@@ -1,0 +1,108 @@
+import * as Y from 'yjs'
+import { IndexeddbPersistence } from 'y-indexeddb'
+import * as repo from '../db/repository'
+import { buildExampleBoardData, hasSeededExampleBefore, markExampleSeeded } from '../db/exampleBoard'
+import { getEntityMap, ENTITY_KEYS } from './schema'
+import { transact, observeSlice, snapshotSlice, type Ops } from './bridge'
+import type { Board, Bucket, TaskCard, Category } from '../types'
+
+/**
+ * The app's single collaborative Y.Doc + its local (IndexedDB) persistence. In this single-client
+ * phase the doc is the source of truth for boards/buckets/tasks/categories; a later phase adds a
+ * websocket provider on top of the same doc for real-time sharing. Attachments and the activity
+ * log stay in their own IndexedDB stores (via repository), and preferences stay in localStorage.
+ */
+
+const ROOM = 'chronokanban'
+const MIGRATED_KEY = 'chrono-kanban-yjs-migrated'
+
+export const doc = new Y.Doc()
+const persistence = new IndexeddbPersistence(ROOM, doc)
+
+/** Run one or many entity writes in a single transaction (see bridge `transact`). */
+export function mutate(fn: (ops: Ops) => void): void {
+  transact(doc, fn)
+}
+
+/** Wipe all four entity maps (used by "Delete all my data" before reseeding). */
+export function clearDocEntities(): void {
+  doc.transact(() => {
+    for (const key of ENTITY_KEYS) getEntityMap(doc, key).clear()
+  })
+}
+
+/** Write the example board into the doc, plus its demo activity-log entries into their store. */
+export function seedExampleIntoDoc(): void {
+  const data = buildExampleBoardData()
+  mutate((ops) => {
+    ops.put('boards', data.board)
+    data.buckets.forEach((b) => ops.put('buckets', b))
+    data.categories.forEach((c) => ops.put('categories', c))
+    data.tasks.forEach((t) => ops.put('tasks', t))
+  })
+  data.activityLog.forEach((entry) => {
+    void repo.putActivityLogEntry(entry)
+  })
+  markExampleSeeded()
+}
+
+/** One-time, non-destructive copy of any pre-Yjs local boards (old IndexedDB stores) into the doc. */
+async function migrateFromRepo(): Promise<boolean> {
+  const boards = await repo.getAllBoards()
+  if (boards.length === 0) return false
+  const [buckets, tasks, categories] = await Promise.all([
+    repo.getAllBuckets(),
+    repo.getAllTasks(),
+    repo.getAllCategories(),
+  ])
+  mutate((ops) => {
+    boards.forEach((b) => ops.put('boards', b))
+    buckets.forEach((b) => ops.put('buckets', b))
+    // Backfill fields added after these tasks were first stored, same as the old loadFromDB did.
+    tasks.forEach((t) =>
+      ops.put('tasks', { ...t, estimatedHours: t.estimatedHours ?? null, flaggedForToday: t.flaggedForToday ?? false }),
+    )
+    categories.forEach((c) => ops.put('categories', c))
+  })
+  return true
+}
+
+type SliceSetter = (partial: {
+  boards?: Record<string, Board>
+  buckets?: Record<string, Bucket>
+  tasks?: Record<string, TaskCard>
+  categories?: Record<string, Category>
+  loaded?: boolean
+}) => void
+
+/**
+ * Load the doc from IndexedDB, run first-run migration/seeding on an empty doc, then wire the
+ * per-slice observers into the store and flip `loaded`. Replaces the old direct-read `loadFromDB`.
+ */
+export async function initCollab(set: SliceSetter): Promise<void> {
+  await persistence.whenSynced
+
+  if (getEntityMap(doc, 'boards').size === 0) {
+    if (localStorage.getItem(MIGRATED_KEY) !== 'true') {
+      const migrated = await migrateFromRepo()
+      // Mark attempted regardless, so deleting all boards later doesn't re-resurrect old data.
+      localStorage.setItem(MIGRATED_KEY, 'true')
+      if (!migrated && !hasSeededExampleBefore()) seedExampleIntoDoc()
+    } else if (!hasSeededExampleBefore()) {
+      seedExampleIntoDoc()
+    }
+  }
+
+  observeSlice(doc, 'boards', (boards) => set({ boards }))
+  observeSlice(doc, 'buckets', (buckets) => set({ buckets }))
+  observeSlice(doc, 'tasks', (tasks) => set({ tasks }))
+  observeSlice(doc, 'categories', (categories) => set({ categories }))
+
+  set({
+    boards: snapshotSlice(doc, 'boards'),
+    buckets: snapshotSlice(doc, 'buckets'),
+    tasks: snapshotSlice(doc, 'tasks'),
+    categories: snapshotSlice(doc, 'categories'),
+    loaded: true,
+  })
+}

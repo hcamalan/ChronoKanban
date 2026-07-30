@@ -5,7 +5,7 @@ import { logActivity, downloadTimesheetCsv, purgeCurrentRunLog, type WorkInterva
 import { createDebouncer } from './persist'
 import { loadPreferences, savePreferences } from './preferencesStorage'
 import { markExported } from './backupStorage'
-import { hasSeededExampleBefore, seedExampleBoard } from '../db/exampleBoard'
+import { mutate, initCollab, clearDocEntities, seedExampleIntoDoc } from '../collab/collabDoc'
 import { addToDateString } from '../utils/time'
 import type { Board, Bucket, TaskCard, Category, Preferences } from '../types'
 
@@ -16,13 +16,12 @@ interface PendingDeletion {
   restore: () => void
 }
 
-const debouncedPutTask = createDebouncer((task: TaskCard) => {
-  repo.putTask(task)
+// The Y.Doc (via collabDoc) is now the source of truth + persistence for entities, so text edits
+// no longer need debounced IndexedDB writes. This debouncer only throttles the activity-log
+// "update" entry so typing a name/description doesn't flood the log.
+const debouncedLogUpdate = createDebouncer((task: TaskCard) => {
   logActivity(task.id, task.name, 'update', task.status)
 }, 450)
-const debouncedPutBoard = createDebouncer(repo.putBoard, 450)
-const debouncedPutBucket = createDebouncer(repo.putBucket, 450)
-const debouncedPutCategory = createDebouncer(repo.putCategory, 450)
 
 interface AppState {
   boards: Record<string, Board>
@@ -88,606 +87,503 @@ export const useStore = create<AppState>((set, get) => {
   }
 
   return {
-  boards: {},
-  buckets: {},
-  tasks: {},
-  categories: {},
-  loaded: false,
-  preferences: loadPreferences(),
-  pendingDeletion: null,
-  pendingEditBucketId: null,
+    boards: {},
+    buckets: {},
+    tasks: {},
+    categories: {},
+    loaded: false,
+    preferences: loadPreferences(),
+    pendingDeletion: null,
+    pendingEditBucketId: null,
 
-  setPreference: (key, value) => {
-    const preferences = { ...get().preferences, [key]: value }
-    set({ preferences })
-    savePreferences(preferences)
-  },
-  setPendingEditBucketId: (id) => set({ pendingEditBucketId: id }),
-  undoDelete: () => {
-    const pending = get().pendingDeletion
-    if (!pending) return
-    clearTimeout(pending.timeoutId)
-    pending.restore()
-    set({ pendingDeletion: null })
-  },
+    // Entity slices below are DERIVED from the Y.Doc: mutations write the doc, and collabDoc's
+    // observers are the only thing that call `set()` for boards/buckets/tasks/categories.
+    loadFromDB: async () => {
+      await initCollab(set)
+    },
 
-  loadFromDB: async () => {
-    const [boards, buckets, tasks, categories] = await Promise.all([
-      repo.getAllBoards(),
-      repo.getAllBuckets(),
-      repo.getAllTasks(),
-      repo.getAllCategories(),
-    ])
-
-    // First-ever visit with nothing in the database yet — seed the example board so the app
-    // never opens to a blank screen. Skipped if the example was already seeded before (even if
-    // the user has since deleted it, or all their boards) — only "Delete all my data" reseeds.
-    if (boards.length === 0 && !hasSeededExampleBefore()) {
-      const seeded = await seedExampleBoard()
-      set({ ...seeded, loaded: true })
-      return
-    }
-
-    set({
-      boards: Object.fromEntries(boards.map((b) => [b.id, b])),
-      buckets: Object.fromEntries(buckets.map((b) => [b.id, b])),
-      // Tasks persisted before newer fields existed lack them entirely — backfill defaults.
-      tasks: Object.fromEntries(
-        tasks.map((t) => [
-          t.id,
-          { ...t, estimatedHours: t.estimatedHours ?? null, flaggedForToday: t.flaggedForToday ?? false },
-        ]),
-      ),
-      categories: Object.fromEntries(categories.map((c) => [c.id, c])),
-      loaded: true,
-    })
-  },
-
-  addBoard: (name) => {
-    const id = crypto.randomUUID()
-    const order = Object.keys(get().boards).length
-    const board: Board = { id, name, order, createdAt: Date.now() }
-    set((state) => ({ boards: { ...state.boards, [id]: board } }))
-    repo.putBoard(board)
-    return id
-  },
-  renameBoard: (id, name) => {
-    set((state) => {
-      const board = state.boards[id]
-      if (!board) return state
-      return { boards: { ...state.boards, [id]: { ...board, name } } }
-    })
-    debouncedPutBoard(id, () => get().boards[id])
-  },
-  deleteBoard: (id) => {
-    const board = get().boards[id]
-    if (!board) return
-    finalizePendingDeletion()
-    const affectedBuckets = Object.values(get().buckets).filter((b) => b.boardId === id)
-    const affectedTasks = Object.values(get().tasks).filter((t) => t.boardId === id)
-    const affectedCategories = Object.values(get().categories).filter((c) => c.boardId === id)
-    set((state) => {
-      const boards = { ...state.boards }
-      delete boards[id]
-      const buckets = Object.fromEntries(Object.entries(state.buckets).filter(([, b]) => b.boardId !== id))
-      const tasks = Object.fromEntries(Object.entries(state.tasks).filter(([, t]) => t.boardId !== id))
-      const categories = Object.fromEntries(Object.entries(state.categories).filter(([, c]) => c.boardId !== id))
-      return { boards, buckets, tasks, categories }
-    })
-    const commit = () => {
-      repo.deleteBoardCascade(id)
-      for (const t of affectedTasks) logActivity(t.id, t.name, 'delete', t.status)
-    }
-    const timeoutId = setTimeout(() => {
-      commit()
+    setPreference: (key, value) => {
+      const preferences = { ...get().preferences, [key]: value }
+      set({ preferences })
+      savePreferences(preferences)
+    },
+    setPendingEditBucketId: (id) => set({ pendingEditBucketId: id }),
+    undoDelete: () => {
+      const pending = get().pendingDeletion
+      if (!pending) return
+      clearTimeout(pending.timeoutId)
+      pending.restore()
       set({ pendingDeletion: null })
-    }, 6000)
-    set({
-      pendingDeletion: {
-        label: `"${board.name}" deleted`,
-        timeoutId,
-        commit,
-        restore: () =>
-          set((state) => ({
-            boards: { ...state.boards, [id]: board },
-            buckets: { ...state.buckets, ...Object.fromEntries(affectedBuckets.map((b) => [b.id, b])) },
-            tasks: { ...state.tasks, ...Object.fromEntries(affectedTasks.map((t) => [t.id, t])) },
-            categories: { ...state.categories, ...Object.fromEntries(affectedCategories.map((c) => [c.id, c])) },
-          })),
-      },
-    })
-  },
-  reorderBoards: (orderedIds) => {
-    const updates: Record<string, Board> = {}
-    orderedIds.forEach((id, index) => {
+    },
+
+    addBoard: (name) => {
+      const id = crypto.randomUUID()
+      const order = Object.keys(get().boards).length
+      const board: Board = { id, name, order, createdAt: Date.now() }
+      mutate((ops) => ops.put('boards', board))
+      return id
+    },
+    renameBoard: (id, name) => {
+      if (!get().boards[id]) return
+      mutate((ops) => ops.update('boards', id, { name }))
+    },
+    deleteBoard: (id) => {
       const board = get().boards[id]
-      if (board && board.order !== index) updates[id] = { ...board, order: index }
-    })
-    if (Object.keys(updates).length === 0) return
-    set((state) => ({ boards: { ...state.boards, ...updates } }))
-    Object.values(updates).forEach((b) => repo.putBoard(b))
-  },
-  duplicateBoard: (id) => {
-    const board = get().boards[id]
-    if (!board) return
-    const newBoardId = crypto.randomUUID()
-    const newBoard: Board = {
-      ...board,
-      id: newBoardId,
-      name: `${board.name} (copy)`,
-      order: Object.keys(get().boards).length,
-      createdAt: Date.now(),
-    }
-
-    const oldBuckets = Object.values(get().buckets).filter((b) => b.boardId === id)
-    const bucketIdMap = new Map<string, string>()
-    const newBuckets: Bucket[] = oldBuckets.map((b) => {
-      const newId = crypto.randomUUID()
-      bucketIdMap.set(b.id, newId)
-      return { ...b, id: newId, boardId: newBoardId }
-    })
-
-    const oldCategories = Object.values(get().categories).filter((c) => c.boardId === id)
-    const categoryIdMap = new Map<string, string>()
-    const newCategories: Category[] = oldCategories.map((c) => {
-      const newId = crypto.randomUUID()
-      categoryIdMap.set(c.id, newId)
-      return { ...c, id: newId, boardId: newBoardId }
-    })
-
-    const oldTasks = Object.values(get().tasks).filter((t) => t.boardId === id)
-    const newTasks: TaskCard[] = oldTasks.map((t) => ({
-      ...t,
-      id: crypto.randomUUID(),
-      boardId: newBoardId,
-      bucketId: bucketIdMap.get(t.bucketId) ?? t.bucketId,
-      categoryId: t.categoryId ? (categoryIdMap.get(t.categoryId) ?? null) : null,
-      status: 'not-started',
-      completedAt: null,
-      timer: { isRunning: false, elapsedSeconds: 0, startedAt: null },
-      createdAt: Date.now(),
-      subtasks: t.subtasks.map((s) => ({ ...s, id: crypto.randomUUID() })),
-    }))
-
-    set((state) => ({
-      boards: { ...state.boards, [newBoardId]: newBoard },
-      buckets: { ...state.buckets, ...Object.fromEntries(newBuckets.map((b) => [b.id, b])) },
-      categories: { ...state.categories, ...Object.fromEntries(newCategories.map((c) => [c.id, c])) },
-      tasks: { ...state.tasks, ...Object.fromEntries(newTasks.map((t) => [t.id, t])) },
-    }))
-    repo.putBoard(newBoard)
-    newBuckets.forEach((b) => repo.putBucket(b))
-    newCategories.forEach((c) => repo.putCategory(c))
-    newTasks.forEach((t) => repo.putTask(t))
-    return newBoardId
-  },
-
-  addBucket: (boardId, name) => {
-    const id = crypto.randomUUID()
-    const order = Object.values(get().buckets).filter((b) => b.boardId === boardId).length
-    const bucket: Bucket = { id, boardId, name, order }
-    set((state) => ({ buckets: { ...state.buckets, [id]: bucket } }))
-    repo.putBucket(bucket)
-    return id
-  },
-  renameBucket: (id, name) => {
-    set((state) => {
-      const bucket = state.buckets[id]
-      if (!bucket) return state
-      return { buckets: { ...state.buckets, [id]: { ...bucket, name } } }
-    })
-    debouncedPutBucket(id, () => get().buckets[id])
-  },
-  deleteBucket: (id) => {
-    const bucket = get().buckets[id]
-    if (!bucket) return
-    finalizePendingDeletion()
-    const affectedTasks = Object.values(get().tasks).filter((t) => t.bucketId === id)
-    set((state) => {
-      const buckets = { ...state.buckets }
-      delete buckets[id]
-      const tasks = Object.fromEntries(Object.entries(state.tasks).filter(([, t]) => t.bucketId !== id))
-      return { buckets, tasks }
-    })
-    const commit = () => {
-      repo.deleteBucketCascade(id)
-      for (const t of affectedTasks) logActivity(t.id, t.name, 'delete', t.status)
-    }
-    const timeoutId = setTimeout(() => {
-      commit()
-      set({ pendingDeletion: null })
-    }, 6000)
-    set({
-      pendingDeletion: {
-        label: `"${bucket.name}" deleted`,
-        timeoutId,
-        commit,
-        restore: () =>
-          set((state) => ({
-            buckets: { ...state.buckets, [id]: bucket },
-            tasks: { ...state.tasks, ...Object.fromEntries(affectedTasks.map((t) => [t.id, t])) },
-          })),
-      },
-    })
-  },
-  reorderBuckets: (boardId, orderedIds) => {
-    const updates: Record<string, Bucket> = {}
-    orderedIds.forEach((id, index) => {
-      const bucket = get().buckets[id]
-      if (bucket && bucket.boardId === boardId && bucket.order !== index) updates[id] = { ...bucket, order: index }
-    })
-    if (Object.keys(updates).length === 0) return
-    set((state) => ({ buckets: { ...state.buckets, ...updates } }))
-    Object.values(updates).forEach((b) => repo.putBucket(b))
-  },
-
-  addTask: (boardId, bucketId, name) => {
-    const id = crypto.randomUUID()
-    const order = Object.values(get().tasks).filter((t) => t.bucketId === bucketId).length
-    const task: TaskCard = {
-      id,
-      boardId,
-      bucketId,
-      name,
-      categoryId: null,
-      status: 'not-started',
-      assignedTo: '',
-      dueDate: null,
-      urgency: null,
-      importance: null,
-      description: '',
-      storyPoints: null,
-      estimatedHours: null,
-      subtasks: [],
-      recurrence: null,
-      order,
-      timer: { isRunning: false, elapsedSeconds: 0, startedAt: null },
-      createdAt: Date.now(),
-      completedAt: null,
-      flaggedForToday: false,
-    }
-    set((state) => ({ tasks: { ...state.tasks, [id]: task } }))
-    repo.putTask(task)
-    logActivity(id, name, 'create', task.status)
-    return id
-  },
-  addTaskAtTop: (boardId, bucketId) => {
-    const id = crypto.randomUUID()
-    const task: TaskCard = {
-      id,
-      boardId,
-      bucketId,
-      name: '',
-      categoryId: null,
-      status: 'not-started',
-      assignedTo: '',
-      dueDate: null,
-      urgency: null,
-      importance: null,
-      description: '',
-      storyPoints: null,
-      estimatedHours: null,
-      subtasks: [],
-      recurrence: null,
-      order: 0,
-      timer: { isRunning: false, elapsedSeconds: 0, startedAt: null },
-      createdAt: Date.now(),
-      completedAt: null,
-      flaggedForToday: false,
-    }
-    // Shift every other active task in this bucket down by one to make room at the top —
-    // completed tasks keep their own separate order sequence, same convention as moveTask.
-    const shifted: Record<string, TaskCard> = {}
-    Object.values(get().tasks)
-      .filter((t) => t.bucketId === bucketId && t.status !== 'completed')
-      .forEach((t) => {
-        shifted[t.id] = { ...t, order: t.order + 1 }
+      if (!board) return
+      finalizePendingDeletion()
+      const affectedBuckets = Object.values(get().buckets).filter((b) => b.boardId === id)
+      const affectedTasks = Object.values(get().tasks).filter((t) => t.boardId === id)
+      const affectedCategories = Object.values(get().categories).filter((c) => c.boardId === id)
+      mutate((ops) => {
+        ops.delete('boards', id)
+        affectedBuckets.forEach((b) => ops.delete('buckets', b.id))
+        affectedTasks.forEach((t) => ops.delete('tasks', t.id))
+        affectedCategories.forEach((c) => ops.delete('categories', c.id))
       })
-    set((state) => ({ tasks: { ...state.tasks, ...shifted, [id]: task } }))
-    repo.putTask(task)
-    Object.values(shifted).forEach((t) => repo.putTask(t))
-    logActivity(id, task.name, 'create', task.status)
-    return id
-  },
-  updateTask: (id, patch) => {
-    set((state) => {
-      const task = state.tasks[id]
-      if (!task) return state
-      return { tasks: { ...state.tasks, [id]: { ...task, ...patch } } }
-    })
-    if ('name' in patch || 'description' in patch) {
-      debouncedPutTask(id, () => get().tasks[id])
-    } else {
-      const updated = get().tasks[id]
-      if (updated) {
-        repo.putTask(updated)
-        logActivity(id, updated.name, 'status' in patch ? 'status-change' : 'update', updated.status)
+      // Deferred, undo-unsafe parts only: clean each affected task's attachments + log the delete.
+      const commit = () => {
+        for (const t of affectedTasks) {
+          repo.deleteTask(t.id)
+          logActivity(t.id, t.name, 'delete', t.status)
+        }
       }
-    }
-  },
-  deleteTask: (id) => {
-    const task = get().tasks[id]
-    if (!task) return
-    finalizePendingDeletion()
-    set((state) => {
-      const tasks = { ...state.tasks }
-      delete tasks[id]
-      return { tasks }
-    })
-    const commit = () => {
-      repo.deleteTask(id)
-      logActivity(id, task.name, 'delete', task.status)
-    }
-    const timeoutId = setTimeout(() => {
-      commit()
-      set({ pendingDeletion: null })
-    }, 6000)
-    set({
-      pendingDeletion: {
-        label: `"${task.name}" deleted`,
-        timeoutId,
-        commit,
-        restore: () => set((state) => ({ tasks: { ...state.tasks, [id]: task } })),
-      },
-    })
-  },
-  deleteTasksWithUndo: (ids) => {
-    const tasksToDelete = ids.map((id) => get().tasks[id]).filter((t): t is TaskCard => !!t)
-    if (tasksToDelete.length === 0) return
-    finalizePendingDeletion()
-    set((state) => {
-      const tasks = { ...state.tasks }
-      for (const t of tasksToDelete) delete tasks[t.id]
-      return { tasks }
-    })
-    const commit = () => {
-      for (const t of tasksToDelete) {
-        repo.deleteTask(t.id)
-        logActivity(t.id, t.name, 'delete', t.status)
-      }
-    }
-    const timeoutId = setTimeout(() => {
-      commit()
-      set({ pendingDeletion: null })
-    }, 6000)
-    set({
-      pendingDeletion: {
-        label: `${tasksToDelete.length} task${tasksToDelete.length === 1 ? '' : 's'} deleted`,
-        timeoutId,
-        commit,
-        restore: () =>
-          set((state) => ({
-            tasks: { ...state.tasks, ...Object.fromEntries(tasksToDelete.map((t) => [t.id, t])) },
-          })),
-      },
-    })
-  },
-  moveTask: (taskId, toBucketId, toIndex) => {
-    const state = get()
-    const task = state.tasks[taskId]
-    if (!task) return
-    const fromBucketId = task.bucketId
-    const isCompleted = task.status === 'completed'
-
-    // Active and completed tasks keep separate order sequences within a bucket, since the
-    // completed section is a visually distinct sub-list (collapsed by default).
-    const targetTasks = Object.values(state.tasks)
-      .filter((t) => t.bucketId === toBucketId && t.id !== taskId && (t.status === 'completed') === isCompleted)
-      .sort((a, b) => a.order - b.order)
-    targetTasks.splice(toIndex, 0, task)
-
-    const updates: Record<string, TaskCard> = {}
-    targetTasks.forEach((t, index) => {
-      updates[t.id] = { ...t, bucketId: toBucketId, order: index }
-    })
-
-    set((s) => ({ tasks: { ...s.tasks, ...updates } }))
-    Object.values(updates).forEach((t) => repo.putTask(t))
-
-    if (fromBucketId !== toBucketId) {
-      const remaining = Object.values(get().tasks)
-        .filter((t) => t.bucketId === fromBucketId && (t.status === 'completed') === isCompleted)
-        .sort((a, b) => a.order - b.order)
-      const resequenced: Record<string, TaskCard> = {}
-      remaining.forEach((t, index) => {
-        if (t.order !== index) resequenced[t.id] = { ...t, order: index }
+      const timeoutId = setTimeout(() => {
+        commit()
+        set({ pendingDeletion: null })
+      }, 6000)
+      set({
+        pendingDeletion: {
+          label: `"${board.name}" deleted`,
+          timeoutId,
+          commit,
+          restore: () =>
+            mutate((ops) => {
+              ops.put('boards', board)
+              affectedBuckets.forEach((b) => ops.put('buckets', b))
+              affectedTasks.forEach((t) => ops.put('tasks', t))
+              affectedCategories.forEach((c) => ops.put('categories', c))
+            }),
+        },
       })
-      if (Object.keys(resequenced).length > 0) {
-        set((s) => ({ tasks: { ...s.tasks, ...resequenced } }))
-        Object.values(resequenced).forEach((t) => repo.putTask(t))
+    },
+    reorderBoards: (orderedIds) => {
+      const changed: { id: string; order: number }[] = []
+      orderedIds.forEach((id, index) => {
+        const board = get().boards[id]
+        if (board && board.order !== index) changed.push({ id, order: index })
+      })
+      if (changed.length === 0) return
+      mutate((ops) => changed.forEach(({ id, order }) => ops.update('boards', id, { order })))
+    },
+    duplicateBoard: (id) => {
+      const board = get().boards[id]
+      if (!board) return
+      const newBoardId = crypto.randomUUID()
+      const newBoard: Board = {
+        ...board,
+        id: newBoardId,
+        name: `${board.name} (copy)`,
+        order: Object.keys(get().boards).length,
+        createdAt: Date.now(),
       }
-      logActivity(taskId, task.name, 'move', task.status)
-    }
-  },
-  moveTaskToBoard: (taskId, newBoardId) => {
-    const task = get().tasks[taskId]
-    if (!task) return
-    const targetBuckets = Object.values(get().buckets)
-      .filter((b) => b.boardId === newBoardId)
-      .sort((a, b) => a.order - b.order)
-    if (targetBuckets.length === 0) return
-    const newBucketId = targetBuckets[0].id
-    const order = Object.values(get().tasks).filter((t) => t.bucketId === newBucketId).length
-    const updated: TaskCard = { ...task, boardId: newBoardId, bucketId: newBucketId, categoryId: null, order }
-    set((state) => ({ tasks: { ...state.tasks, [taskId]: updated } }))
-    repo.putTask(updated)
-    logActivity(taskId, task.name, 'move', updated.status)
-  },
 
-  startTimer: (taskId) => {
-    const task = get().tasks[taskId]
-    if (!task || task.timer.isRunning) return
-    const updated: TaskCard = {
-      ...task,
-      status: task.status === 'not-started' ? 'in-progress' : task.status,
-      timer: { ...task.timer, isRunning: true, startedAt: Date.now() },
-    }
-    set((state) => ({ tasks: { ...state.tasks, [taskId]: updated } }))
-    repo.putTask(updated)
-    logActivity(taskId, task.name, 'timer-start', updated.status)
-  },
-  pauseTimer: (taskId) => {
-    const task = get().tasks[taskId]
-    if (!task || !task.timer.isRunning || task.timer.startedAt == null) return
-    const segmentStart = task.timer.startedAt
-    const elapsedSeconds = task.timer.elapsedSeconds + (Date.now() - segmentStart) / 1000
-    const updated: TaskCard = { ...task, timer: { isRunning: false, elapsedSeconds, startedAt: null } }
-    set((state) => ({ tasks: { ...state.tasks, [taskId]: updated } }))
-    repo.putTask(updated)
-    logActivity(taskId, task.name, 'timer-pause', updated.status, segmentStart)
-  },
-  pauseAllTimers: (boardId) => {
-    Object.values(get().tasks)
-      .filter((t) => t.timer.isRunning && (boardId == null || t.boardId === boardId))
-      .forEach((t) => get().pauseTimer(t.id))
-  },
-  resetTimer: (taskId) => {
-    const task = get().tasks[taskId]
-    if (!task) return
-    const updated: TaskCard = { ...task, timer: { isRunning: false, elapsedSeconds: 0, startedAt: null } }
-    set((state) => ({ tasks: { ...state.tasks, [taskId]: updated } }))
-    repo.putTask(updated)
-    // Undo only the current run's logged time (since the last reset, or since creation) — purge
-    // before logging the new reset entry so it can't affect its own boundary calculation.
-    purgeCurrentRunLog(taskId, task.createdAt).then(() => {
-      logActivity(taskId, task.name, 'timer-reset', updated.status)
-    })
-  },
-  setElapsedTime: (taskId, newElapsedSeconds) => {
-    const task = get().tasks[taskId]
-    if (!task) return
+      const oldBuckets = Object.values(get().buckets).filter((b) => b.boardId === id)
+      const bucketIdMap = new Map<string, string>()
+      const newBuckets: Bucket[] = oldBuckets.map((b) => {
+        const newId = crypto.randomUUID()
+        bucketIdMap.set(b.id, newId)
+        return { ...b, id: newId, boardId: newBoardId }
+      })
 
-    // If running, close out the real segment first — logged exactly as a normal pause would be —
-    // so the delta computed below is only the manual correction on top of genuinely tracked time.
-    let baseElapsed = task.timer.elapsedSeconds
-    if (task.timer.isRunning && task.timer.startedAt != null) {
-      const segmentStart = task.timer.startedAt
-      baseElapsed += (Date.now() - segmentStart) / 1000
-      logActivity(taskId, task.name, 'timer-pause', task.status, segmentStart)
-    }
+      const oldCategories = Object.values(get().categories).filter((c) => c.boardId === id)
+      const categoryIdMap = new Map<string, string>()
+      const newCategories: Category[] = oldCategories.map((c) => {
+        const newId = crypto.randomUUID()
+        categoryIdMap.set(c.id, newId)
+        return { ...c, id: newId, boardId: newBoardId }
+      })
 
-    const delta = newElapsedSeconds - baseElapsed
-    const updated: TaskCard = {
-      ...task,
-      timer: { isRunning: false, elapsedSeconds: newElapsedSeconds, startedAt: null },
-    }
-    set((state) => ({ tasks: { ...state.tasks, [taskId]: updated } }))
-    repo.putTask(updated)
-    if (delta !== 0) {
-      logActivity(taskId, task.name, 'manual-adjustment', updated.status, undefined, delta)
-    }
-  },
-
-  completeTask: (taskId) => {
-    const task = get().tasks[taskId]
-    if (!task) return
-    let timer = task.timer
-    let segmentStart: number | undefined
-    if (timer.isRunning && timer.startedAt != null) {
-      segmentStart = timer.startedAt
-      const elapsedSeconds = timer.elapsedSeconds + (Date.now() - segmentStart) / 1000
-      timer = { isRunning: false, elapsedSeconds, startedAt: null }
-    }
-    const updated: TaskCard = { ...task, status: 'completed', completedAt: Date.now(), timer }
-    set((state) => ({ tasks: { ...state.tasks, [taskId]: updated } }))
-    repo.putTask(updated)
-    logActivity(taskId, task.name, 'status-change', updated.status, segmentStart)
-
-    if (updated.recurrence && updated.dueDate) {
-      const nextId = crypto.randomUUID()
-      const nextTask: TaskCard = {
-        ...updated,
-        id: nextId,
+      const oldTasks = Object.values(get().tasks).filter((t) => t.boardId === id)
+      const newTasks: TaskCard[] = oldTasks.map((t) => ({
+        ...t,
+        id: crypto.randomUUID(),
+        boardId: newBoardId,
+        bucketId: bucketIdMap.get(t.bucketId) ?? t.bucketId,
+        categoryId: t.categoryId ? (categoryIdMap.get(t.categoryId) ?? null) : null,
         status: 'not-started',
         completedAt: null,
-        dueDate: addToDateString(updated.dueDate, updated.recurrence.interval, updated.recurrence.unit),
         timer: { isRunning: false, elapsedSeconds: 0, startedAt: null },
         createdAt: Date.now(),
-        subtasks: updated.subtasks.map((s) => ({ ...s, id: crypto.randomUUID(), done: false })),
+        subtasks: t.subtasks.map((s) => ({ ...s, id: crypto.randomUUID() })),
+      }))
+
+      mutate((ops) => {
+        ops.put('boards', newBoard)
+        newBuckets.forEach((b) => ops.put('buckets', b))
+        newCategories.forEach((c) => ops.put('categories', c))
+        newTasks.forEach((t) => ops.put('tasks', t))
+      })
+      return newBoardId
+    },
+
+    addBucket: (boardId, name) => {
+      const id = crypto.randomUUID()
+      const order = Object.values(get().buckets).filter((b) => b.boardId === boardId).length
+      const bucket: Bucket = { id, boardId, name, order }
+      mutate((ops) => ops.put('buckets', bucket))
+      return id
+    },
+    renameBucket: (id, name) => {
+      if (!get().buckets[id]) return
+      mutate((ops) => ops.update('buckets', id, { name }))
+    },
+    deleteBucket: (id) => {
+      const bucket = get().buckets[id]
+      if (!bucket) return
+      finalizePendingDeletion()
+      const affectedTasks = Object.values(get().tasks).filter((t) => t.bucketId === id)
+      mutate((ops) => {
+        ops.delete('buckets', id)
+        affectedTasks.forEach((t) => ops.delete('tasks', t.id))
+      })
+      const commit = () => {
+        for (const t of affectedTasks) {
+          repo.deleteTask(t.id)
+          logActivity(t.id, t.name, 'delete', t.status)
+        }
       }
-      set((state) => ({ tasks: { ...state.tasks, [nextId]: nextTask } }))
-      repo.putTask(nextTask)
-      logActivity(nextId, nextTask.name, 'create', nextTask.status)
-    }
-  },
-  uncompleteTask: (taskId) => {
-    const task = get().tasks[taskId]
-    if (!task) return
-    const updated: TaskCard = { ...task, status: 'not-started', completedAt: null }
-    set((state) => ({ tasks: { ...state.tasks, [taskId]: updated } }))
-    repo.putTask(updated)
-    logActivity(taskId, task.name, 'status-change', updated.status)
-  },
+      const timeoutId = setTimeout(() => {
+        commit()
+        set({ pendingDeletion: null })
+      }, 6000)
+      set({
+        pendingDeletion: {
+          label: `"${bucket.name}" deleted`,
+          timeoutId,
+          commit,
+          restore: () =>
+            mutate((ops) => {
+              ops.put('buckets', bucket)
+              affectedTasks.forEach((t) => ops.put('tasks', t))
+            }),
+        },
+      })
+    },
+    reorderBuckets: (boardId, orderedIds) => {
+      const changed: { id: string; order: number }[] = []
+      orderedIds.forEach((id, index) => {
+        const bucket = get().buckets[id]
+        if (bucket && bucket.boardId === boardId && bucket.order !== index) changed.push({ id, order: index })
+      })
+      if (changed.length === 0) return
+      mutate((ops) => changed.forEach(({ id, order }) => ops.update('buckets', id, { order })))
+    },
 
-  addCategory: (boardId, name, color) => {
-    const id = crypto.randomUUID()
-    const category: Category = { id, boardId, name, color }
-    set((state) => ({ categories: { ...state.categories, [id]: category } }))
-    repo.putCategory(category)
-    return id
-  },
-  updateCategory: (id, patch) => {
-    set((state) => {
-      const category = state.categories[id]
-      if (!category) return state
-      return { categories: { ...state.categories, [id]: { ...category, ...patch } } }
-    })
-    if ('name' in patch) {
-      debouncedPutCategory(id, () => get().categories[id])
-    } else {
-      const updated = get().categories[id]
-      if (updated) repo.putCategory(updated)
-    }
-  },
-  deleteCategory: (id) => {
-    const affectedTaskIds = Object.values(get().tasks)
-      .filter((t) => t.categoryId === id)
-      .map((t) => t.id)
-
-    set((state) => {
-      const categories = { ...state.categories }
-      delete categories[id]
-      const tasks = { ...state.tasks }
-      for (const taskId of affectedTaskIds) {
-        tasks[taskId] = { ...tasks[taskId], categoryId: null }
+    addTask: (boardId, bucketId, name) => {
+      const id = crypto.randomUUID()
+      const order = Object.values(get().tasks).filter((t) => t.bucketId === bucketId).length
+      const task: TaskCard = {
+        id,
+        boardId,
+        bucketId,
+        name,
+        categoryId: null,
+        status: 'not-started',
+        assignedTo: '',
+        dueDate: null,
+        urgency: null,
+        importance: null,
+        description: '',
+        storyPoints: null,
+        estimatedHours: null,
+        subtasks: [],
+        recurrence: null,
+        order,
+        timer: { isRunning: false, elapsedSeconds: 0, startedAt: null },
+        createdAt: Date.now(),
+        completedAt: null,
+        flaggedForToday: false,
       }
-      return { categories, tasks }
-    })
+      mutate((ops) => ops.put('tasks', task))
+      logActivity(id, name, 'create', task.status)
+      return id
+    },
+    addTaskAtTop: (boardId, bucketId) => {
+      const id = crypto.randomUUID()
+      const task: TaskCard = {
+        id,
+        boardId,
+        bucketId,
+        name: '',
+        categoryId: null,
+        status: 'not-started',
+        assignedTo: '',
+        dueDate: null,
+        urgency: null,
+        importance: null,
+        description: '',
+        storyPoints: null,
+        estimatedHours: null,
+        subtasks: [],
+        recurrence: null,
+        order: 0,
+        timer: { isRunning: false, elapsedSeconds: 0, startedAt: null },
+        createdAt: Date.now(),
+        completedAt: null,
+        flaggedForToday: false,
+      }
+      // Shift every other active task in this bucket down by one to make room at the top.
+      const shifted = Object.values(get().tasks).filter((t) => t.bucketId === bucketId && t.status !== 'completed')
+      mutate((ops) => {
+        ops.put('tasks', task)
+        shifted.forEach((t) => ops.update('tasks', t.id, { order: t.order + 1 }))
+      })
+      logActivity(id, task.name, 'create', task.status)
+      return id
+    },
+    updateTask: (id, patch) => {
+      if (!get().tasks[id]) return
+      mutate((ops) => ops.update('tasks', id, patch))
+      const updated = get().tasks[id]
+      if (!updated) return
+      if ('name' in patch || 'description' in patch) {
+        debouncedLogUpdate(id, () => get().tasks[id])
+      } else {
+        logActivity(id, updated.name, 'status' in patch ? 'status-change' : 'update', updated.status)
+      }
+    },
+    deleteTask: (id) => {
+      const task = get().tasks[id]
+      if (!task) return
+      finalizePendingDeletion()
+      mutate((ops) => ops.delete('tasks', id))
+      const commit = () => {
+        repo.deleteTask(id)
+        logActivity(id, task.name, 'delete', task.status)
+      }
+      const timeoutId = setTimeout(() => {
+        commit()
+        set({ pendingDeletion: null })
+      }, 6000)
+      set({
+        pendingDeletion: {
+          label: `"${task.name}" deleted`,
+          timeoutId,
+          commit,
+          restore: () => mutate((ops) => ops.put('tasks', task)),
+        },
+      })
+    },
+    deleteTasksWithUndo: (ids) => {
+      const tasksToDelete = ids.map((id) => get().tasks[id]).filter((t): t is TaskCard => !!t)
+      if (tasksToDelete.length === 0) return
+      finalizePendingDeletion()
+      mutate((ops) => tasksToDelete.forEach((t) => ops.delete('tasks', t.id)))
+      const commit = () => {
+        for (const t of tasksToDelete) {
+          repo.deleteTask(t.id)
+          logActivity(t.id, t.name, 'delete', t.status)
+        }
+      }
+      const timeoutId = setTimeout(() => {
+        commit()
+        set({ pendingDeletion: null })
+      }, 6000)
+      set({
+        pendingDeletion: {
+          label: `${tasksToDelete.length} task${tasksToDelete.length === 1 ? '' : 's'} deleted`,
+          timeoutId,
+          commit,
+          restore: () => mutate((ops) => tasksToDelete.forEach((t) => ops.put('tasks', t))),
+        },
+      })
+    },
+    moveTask: (taskId, toBucketId, toIndex) => {
+      const state = get()
+      const task = state.tasks[taskId]
+      if (!task) return
+      const fromBucketId = task.bucketId
+      const isCompleted = task.status === 'completed'
 
-    repo.deleteCategory(id)
-    for (const taskId of affectedTaskIds) {
+      // Active and completed tasks keep separate order sequences within a bucket.
+      const targetTasks = Object.values(state.tasks)
+        .filter((t) => t.bucketId === toBucketId && t.id !== taskId && (t.status === 'completed') === isCompleted)
+        .sort((a, b) => a.order - b.order)
+      targetTasks.splice(toIndex, 0, task)
+
+      const remaining =
+        fromBucketId !== toBucketId
+          ? Object.values(state.tasks)
+              .filter(
+                (t) =>
+                  t.bucketId === fromBucketId &&
+                  t.id !== taskId &&
+                  (t.status === 'completed') === isCompleted,
+              )
+              .sort((a, b) => a.order - b.order)
+          : []
+
+      mutate((ops) => {
+        targetTasks.forEach((t, index) => ops.update('tasks', t.id, { bucketId: toBucketId, order: index }))
+        remaining.forEach((t, index) => {
+          if (t.order !== index) ops.update('tasks', t.id, { order: index })
+        })
+      })
+
+      if (fromBucketId !== toBucketId) logActivity(taskId, task.name, 'move', task.status)
+    },
+    moveTaskToBoard: (taskId, newBoardId) => {
       const task = get().tasks[taskId]
-      if (task) repo.putTask(task)
-    }
-  },
+      if (!task) return
+      const targetBuckets = Object.values(get().buckets)
+        .filter((b) => b.boardId === newBoardId)
+        .sort((a, b) => a.order - b.order)
+      if (targetBuckets.length === 0) return
+      const newBucketId = targetBuckets[0].id
+      const order = Object.values(get().tasks).filter((t) => t.bucketId === newBucketId).length
+      mutate((ops) => ops.update('tasks', taskId, { boardId: newBoardId, bucketId: newBucketId, categoryId: null, order }))
+      logActivity(taskId, task.name, 'move', task.status)
+    },
 
-  exportData: async () => {
-    const data = await buildExportFile()
-    downloadExportFile(data)
-    markExported()
-  },
-  downloadActivityLog: async () => {
-    const now = Date.now()
-    const runningIntervals: WorkInterval[] = Object.values(get().tasks)
-      .filter((t) => t.timer.isRunning && t.timer.startedAt != null)
-      .map((t) => ({ taskId: t.id, taskName: t.name, start: t.timer.startedAt as number, end: now }))
-    await downloadTimesheetCsv(runningIntervals)
-  },
-  deleteAllData: async () => {
-    const pending = get().pendingDeletion
-    if (pending) clearTimeout(pending.timeoutId)
-    await repo.clearAllData()
-    // Always restores the default example board, regardless of the seeded-before flag, so this
-    // destructive action never leaves the app on a blank screen.
-    const seeded = await seedExampleBoard()
-    set({ ...seeded, pendingDeletion: null })
-  },
-  restoreFromSnapshot: async (data) => {
-    const pending = get().pendingDeletion
-    if (pending) clearTimeout(pending.timeoutId)
-    await replaceAllDataWithSnapshot(data)
-    set({ pendingDeletion: null })
-    await get().loadFromDB()
-  },
+    startTimer: (taskId) => {
+      const task = get().tasks[taskId]
+      if (!task || task.timer.isRunning) return
+      const status = task.status === 'not-started' ? 'in-progress' : task.status
+      const timer = { ...task.timer, isRunning: true, startedAt: Date.now() }
+      mutate((ops) => ops.update('tasks', taskId, { status, timer }))
+      logActivity(taskId, task.name, 'timer-start', status)
+    },
+    pauseTimer: (taskId) => {
+      const task = get().tasks[taskId]
+      if (!task || !task.timer.isRunning || task.timer.startedAt == null) return
+      const segmentStart = task.timer.startedAt
+      const elapsedSeconds = task.timer.elapsedSeconds + (Date.now() - segmentStart) / 1000
+      mutate((ops) => ops.update('tasks', taskId, { timer: { isRunning: false, elapsedSeconds, startedAt: null } }))
+      logActivity(taskId, task.name, 'timer-pause', task.status, segmentStart)
+    },
+    pauseAllTimers: (boardId) => {
+      Object.values(get().tasks)
+        .filter((t) => t.timer.isRunning && (boardId == null || t.boardId === boardId))
+        .forEach((t) => get().pauseTimer(t.id))
+    },
+    resetTimer: (taskId) => {
+      const task = get().tasks[taskId]
+      if (!task) return
+      mutate((ops) => ops.update('tasks', taskId, { timer: { isRunning: false, elapsedSeconds: 0, startedAt: null } }))
+      // Undo only the current run's logged time — purge before logging the reset entry.
+      purgeCurrentRunLog(taskId, task.createdAt).then(() => {
+        logActivity(taskId, task.name, 'timer-reset', task.status)
+      })
+    },
+    setElapsedTime: (taskId, newElapsedSeconds) => {
+      const task = get().tasks[taskId]
+      if (!task) return
+
+      // If running, close out the real segment first (logged like a normal pause), so the delta is
+      // only the manual correction on top of genuinely tracked time.
+      let baseElapsed = task.timer.elapsedSeconds
+      if (task.timer.isRunning && task.timer.startedAt != null) {
+        const segmentStart = task.timer.startedAt
+        baseElapsed += (Date.now() - segmentStart) / 1000
+        logActivity(taskId, task.name, 'timer-pause', task.status, segmentStart)
+      }
+
+      const delta = newElapsedSeconds - baseElapsed
+      mutate((ops) =>
+        ops.update('tasks', taskId, { timer: { isRunning: false, elapsedSeconds: newElapsedSeconds, startedAt: null } }),
+      )
+      if (delta !== 0) {
+        logActivity(taskId, task.name, 'manual-adjustment', task.status, undefined, delta)
+      }
+    },
+
+    completeTask: (taskId) => {
+      const task = get().tasks[taskId]
+      if (!task) return
+      let timer = task.timer
+      let segmentStart: number | undefined
+      if (timer.isRunning && timer.startedAt != null) {
+        segmentStart = timer.startedAt
+        const elapsedSeconds = timer.elapsedSeconds + (Date.now() - segmentStart) / 1000
+        timer = { isRunning: false, elapsedSeconds, startedAt: null }
+      }
+      const completedAt = Date.now()
+
+      // Spawn the next occurrence up-front (if recurring) so it lands in the same transaction.
+      let nextTask: TaskCard | null = null
+      if (task.recurrence && task.dueDate) {
+        nextTask = {
+          ...task,
+          id: crypto.randomUUID(),
+          status: 'not-started',
+          completedAt: null,
+          dueDate: addToDateString(task.dueDate, task.recurrence.interval, task.recurrence.unit),
+          timer: { isRunning: false, elapsedSeconds: 0, startedAt: null },
+          createdAt: Date.now(),
+          subtasks: task.subtasks.map((s) => ({ ...s, id: crypto.randomUUID(), done: false })),
+        }
+      }
+
+      mutate((ops) => {
+        ops.update('tasks', taskId, { status: 'completed', completedAt, timer })
+        if (nextTask) ops.put('tasks', nextTask)
+      })
+      logActivity(taskId, task.name, 'status-change', 'completed', segmentStart)
+      if (nextTask) logActivity(nextTask.id, nextTask.name, 'create', nextTask.status)
+    },
+    uncompleteTask: (taskId) => {
+      const task = get().tasks[taskId]
+      if (!task) return
+      mutate((ops) => ops.update('tasks', taskId, { status: 'not-started', completedAt: null }))
+      logActivity(taskId, task.name, 'status-change', 'not-started')
+    },
+
+    addCategory: (boardId, name, color) => {
+      const id = crypto.randomUUID()
+      const category: Category = { id, boardId, name, color }
+      mutate((ops) => ops.put('categories', category))
+      return id
+    },
+    updateCategory: (id, patch) => {
+      if (!get().categories[id]) return
+      mutate((ops) => ops.update('categories', id, patch))
+    },
+    deleteCategory: (id) => {
+      const affectedTaskIds = Object.values(get().tasks)
+        .filter((t) => t.categoryId === id)
+        .map((t) => t.id)
+      mutate((ops) => {
+        ops.delete('categories', id)
+        affectedTaskIds.forEach((tid) => ops.update('tasks', tid, { categoryId: null }))
+      })
+    },
+
+    exportData: async () => {
+      const data = await buildExportFile()
+      downloadExportFile(data)
+      markExported()
+    },
+    downloadActivityLog: async () => {
+      const now = Date.now()
+      const runningIntervals: WorkInterval[] = Object.values(get().tasks)
+        .filter((t) => t.timer.isRunning && t.timer.startedAt != null)
+        .map((t) => ({ taskId: t.id, taskName: t.name, start: t.timer.startedAt as number, end: now }))
+      await downloadTimesheetCsv(runningIntervals)
+    },
+    deleteAllData: async () => {
+      const pending = get().pendingDeletion
+      if (pending) clearTimeout(pending.timeoutId)
+      clearDocEntities()
+      await repo.clearAllData()
+      // Always restores the default example board so this never leaves the app on a blank screen.
+      seedExampleIntoDoc()
+      set({ pendingDeletion: null })
+    },
+    restoreFromSnapshot: async (data) => {
+      const pending = get().pendingDeletion
+      if (pending) clearTimeout(pending.timeoutId)
+      await replaceAllDataWithSnapshot(data)
+      set({ pendingDeletion: null })
+    },
   }
 })

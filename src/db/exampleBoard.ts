@@ -24,7 +24,7 @@ export function hasSeededExampleBefore(): boolean {
   return localStorage.getItem(EXAMPLE_SEEDED_KEY) === 'true'
 }
 
-function markExampleSeeded(): void {
+export function markExampleSeeded(): void {
   localStorage.setItem(EXAMPLE_SEEDED_KEY, 'true')
 }
 
