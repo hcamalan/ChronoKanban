@@ -6,6 +6,12 @@ import { VitePWA } from 'vite-plugin-pwa'
 // https://vite.dev/config/
 export default defineConfig({
   base: './',
+  // The self-hosted collab server (server/) is a sibling of the client in this repo. Don't let the
+  // dev server's file watcher into it — leveldb keeps an exclusive lock on server/data/LOCK while
+  // the server runs, which makes chokidar throw EBUSY. The client build doesn't depend on server/.
+  server: {
+    watch: { ignored: ['**/server/**'] },
+  },
   plugins: [
     react(),
     tailwindcss(),
