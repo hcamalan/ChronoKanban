@@ -5,6 +5,7 @@ import { ConfirmDialog } from '../boards/ConfirmDialog'
 import { ImportConflictDialog } from '../boards/ImportConflictDialog'
 import { FieldsPanel } from './FieldsPanel'
 import { VersionHistoryModal } from './VersionHistoryModal'
+import { isTeamMode, signOut } from '../../collab/collabDoc'
 import { AutoSyncPanel } from './AutoSyncPanel'
 import { isAutoSyncSupported, useAutoSyncStore } from '../../store/useAutoSyncStore'
 import { GoogleDriveSyncPanel } from './GoogleDriveSyncPanel'
@@ -316,6 +317,21 @@ export function SettingsPanel({ onDataDeleted }: SettingsPanelProps) {
               Version history…
             </button>
           </div>
+
+          {isTeamMode && (
+            <div className="mt-3 border-t border-gray-200 pt-3 dark:border-gray-700">
+              <button
+                onClick={() => {
+                  signOut()
+                  window.location.reload()
+                }}
+                title="Sign out of this shared board on this device — you'll be asked for the board password again."
+                className="w-full rounded px-1 py-1 text-left text-sm text-gray-700 hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-700"
+              >
+                Leave board
+              </button>
+            </div>
+          )}
 
           <div className="mt-3 border-t border-gray-200 pt-3 dark:border-gray-700">
             <button

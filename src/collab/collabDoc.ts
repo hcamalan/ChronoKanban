@@ -29,9 +29,14 @@ export type CollabStatus = 'connecting' | 'syncing' | 'connected' | 'offline'
 
 const SERVER_ROOM = 'chronokanban'
 const MIGRATED_KEY = 'chrono-kanban-yjs-migrated'
+const TOKEN_KEY = 'chrono-collab-token'
 
 const SERVER_URL = (import.meta.env.VITE_COLLAB_SERVER as string | undefined)?.trim() || undefined
-const AUTH_TOKEN = (import.meta.env.VITE_COLLAB_TOKEN as string | undefined)?.trim() || undefined
+// A token baked in at build time (VITE_COLLAB_TOKEN) is optional. When present it auto-authenticates
+// (handy for a private/dev deploy). When ABSENT, the app prompts each user for the board password at
+// runtime (see BoardPasswordGate) and uses that as the token — the real login gate, since the server
+// enforces it. The board password is simply the server's COLLAB_TOKEN.
+const BAKED_TOKEN = (import.meta.env.VITE_COLLAB_TOKEN as string | undefined)?.trim() || undefined
 /** True when connected to a shared server (team mode) vs. purely local. */
 export const isTeamMode = !!SERVER_URL
 
@@ -45,9 +50,70 @@ const LOCAL_ROOM = SERVER_URL
 export const doc = new Y.Doc()
 const persistence = new IndexeddbPersistence(LOCAL_ROOM, doc)
 
+/** The token to authenticate with: baked-in wins, else whatever the user last entered (localStorage). */
+function currentToken(): string | undefined {
+  return BAKED_TOKEN || localStorage.getItem(TOKEN_KEY) || undefined
+}
+
 let wsProvider: WebsocketProvider | null = null
-if (SERVER_URL) {
-  wsProvider = new WebsocketProvider(SERVER_URL, SERVER_ROOM, doc, AUTH_TOKEN ? { params: { token: AUTH_TOKEN } } : undefined)
+// Set during initCollab so a provider created LATER (after the password prompt) can still push status.
+let pushStatus: (() => void) | null = null
+
+/** Create the websocket provider with `token` and wire its status into the store. Idempotent-ish. */
+function createProvider(token: string): void {
+  if (wsProvider) return
+  wsProvider = new WebsocketProvider(SERVER_URL!, SERVER_ROOM, doc, { params: { token } })
+  if (pushStatus) {
+    wsProvider.on('status', pushStatus)
+    wsProvider.on('sync', pushStatus)
+    pushStatus()
+  }
+}
+
+// Connect immediately when we already have a token (baked, or remembered from a previous visit).
+if (SERVER_URL && currentToken()) {
+  createProvider(currentToken()!)
+}
+
+/** True when team mode is on but no board password is available yet — the app must prompt for it. */
+export function needsPassword(): boolean {
+  return isTeamMode && !currentToken()
+}
+
+/** True when a password remembered from a previous visit exists and should be re-verified on load. */
+export function hasRememberedPassword(): boolean {
+  return isTeamMode && !BAKED_TOKEN && !!localStorage.getItem(TOKEN_KEY)
+}
+
+/** Check a candidate board password against the server (used to give a clean wrong-password message). */
+export async function validatePassword(password: string): Promise<boolean> {
+  if (!SERVER_URL) return true
+  const httpUrl = SERVER_URL.replace(/^ws/, 'http') // ws->http, wss->https
+  try {
+    const res = await fetch(`${httpUrl}/auth?token=${encodeURIComponent(password)}`)
+    return res.ok
+  } catch {
+    return false
+  }
+}
+
+/** Re-verify the remembered password (e.g. the deployer may have changed it since last visit). */
+export async function validateStoredToken(): Promise<boolean> {
+  const token = currentToken()
+  return token ? validatePassword(token) : false
+}
+
+/** Remember the board password and connect with it. */
+export function connectWithPassword(password: string): void {
+  localStorage.setItem(TOKEN_KEY, password)
+  createProvider(password)
+}
+
+/** Forget the board password and disconnect (leave the board / re-prompt). */
+export function signOut(): void {
+  localStorage.removeItem(TOKEN_KEY)
+  wsProvider?.destroy()
+  wsProvider = null
 }
 
 /** Collapse the provider's socket state + sync flag into the single status the UI shows. */
@@ -139,10 +205,11 @@ export async function initCollab(set: SliceSetter): Promise<void> {
     }
   }
 
-  // Surface the team-mode connection status to the store (both events can change it). Seed once now,
-  // since a status change may have already fired before init ran.
+  // Surface the team-mode connection status to the store. Store the callback at module level so a
+  // provider created LATER (after the password prompt) wires into it too; attach to any provider that
+  // already exists now.
+  pushStatus = () => set({ collabStatus: deriveCollabStatus() })
   if (wsProvider) {
-    const pushStatus = () => set({ collabStatus: deriveCollabStatus() })
     wsProvider.on('status', pushStatus)
     wsProvider.on('sync', pushStatus)
     pushStatus()

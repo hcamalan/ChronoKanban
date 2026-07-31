@@ -196,7 +196,18 @@ const setupWSConnection = (conn, req) => {
   }
 }
 
-const server = http.createServer((_req, res) => {
+const server = http.createServer((req, res) => {
+  // Password-check endpoint so the client can show a clean "wrong password" message before it tries
+  // to connect (browsers can't read the 401 status of a failed WebSocket handshake). CORS-open
+  // because the client is hosted on a different origin than this server. The websocket's verifyClient
+  // below is still the real enforcement — this is only for UX.
+  const url = new URL(req.url, 'http://localhost')
+  if (url.pathname === '/auth') {
+    const ok = !AUTH_TOKEN || url.searchParams.get('token') === AUTH_TOKEN
+    res.writeHead(ok ? 200 : 401, { 'Content-Type': 'text/plain', 'Access-Control-Allow-Origin': '*' })
+    res.end(ok ? 'ok\n' : 'unauthorized\n')
+    return
+  }
   res.writeHead(200, { 'Content-Type': 'text/plain' })
   res.end('ChronoKanban collab server\n')
 })

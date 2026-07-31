@@ -5,6 +5,8 @@ import { useGoogleDriveSyncStore } from './store/useGoogleDriveSyncStore'
 import { useNotificationWatcher } from './hooks/useNotificationWatcher'
 import { ensureInitialGracePeriod } from './store/backupStorage'
 import { startCheckpointScheduler } from './collab/checkpoints'
+import { isTeamMode, needsPassword, hasRememberedPassword, validateStoredToken, signOut } from './collab/collabDoc'
+import { BoardPasswordGate } from './components/layout/BoardPasswordGate'
 import { TopNav } from './components/layout/TopNav'
 import { GoogleDriveSyncBanner } from './components/layout/GoogleDriveSyncBanner'
 import { Footer } from './components/layout/Footer'
@@ -32,11 +34,36 @@ function App() {
   const [view, setView] = useState<View>({ kind: 'boards' })
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null)
   const [hotkeysOpen, setHotkeysOpen] = useState(false)
+  // Team-mode board-password gate. 'passed' immediately for the local-only app (and baked-token
+  // deploys); 'open' prompts for the password; 'checking' re-verifies a remembered one.
+  const [gate, setGate] = useState<'checking' | 'open' | 'passed'>(() =>
+    !isTeamMode ? 'passed' : needsPassword() ? 'open' : hasRememberedPassword() ? 'checking' : 'passed',
+  )
   const loaded = useStore((s) => s.loaded)
   const loadFromDB = useStore((s) => s.loadFromDB)
   const darkMode = useStore((s) => s.preferences.darkMode)
 
   useNotificationWatcher()
+
+  // Re-verify a remembered board password on load (the deployer may have changed it). Stale → prompt.
+  useEffect(() => {
+    if (gate !== 'checking') return
+    let cancelled = false
+    validateStoredToken().then((ok) => {
+      if (cancelled) return
+      if (ok) {
+        setGate('passed')
+      } else {
+        // Stale password (deployer changed it): tear down the auto-connected provider + clear it,
+        // so entering the new password creates a fresh connection.
+        signOut()
+        setGate('open')
+      }
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [gate])
 
   useEffect(() => {
     ;(async () => {
@@ -155,7 +182,11 @@ function App() {
     return () => window.removeEventListener('keydown', onKeyDown)
   }, [view])
 
-  if (!loaded) {
+  if (gate === 'open') {
+    return <BoardPasswordGate onAuthed={() => setGate('passed')} />
+  }
+
+  if (gate === 'checking' || !loaded) {
     return <div className="p-6 text-gray-500 dark:text-gray-400">Loading...</div>
   }
 
