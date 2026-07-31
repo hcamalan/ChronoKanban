@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Privacy Policy — ChronoKanban</title>
+    <title>Privacy Policy — ChronoKanban Teams</title>
     <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
     <style>
       :root {
@@ -83,31 +83,64 @@
   </head>
   <body>
     <main>
-      <a class="back" href="./">← Back to ChronoKanban</a>
+      <a class="back" href="./">← Back to ChronoKanban Teams</a>
       <h1>Privacy Policy</h1>
-      <p class="updated">Last updated: July 2026</p>
+      <p class="updated">Last updated: August 2026</p>
 
       <div class="card">
         <h2>The short version</h2>
         <p>
-          ChronoKanban has no server and no user accounts. Your boards, tasks, and everything on them are stored
-          only in your own browser, and stay there unless you explicitly turn on one of the optional sync
-          features described below. There is no backend that could see, log, or sell your data, because there
-          is no backend at all.
+          ChronoKanban Teams is the collaborative sibling of
+          <a href="https://github.com/hcamalan/chronokanban" target="_blank" rel="noopener noreferrer"
+            >the original ChronoKanban</a
+          >
+          — a privacy-first, individual app that deliberately keeps everything in your own browser with no server
+          at all. Teams was built for the opposite need: sharing a board and working on it together in real time.
+          That means it necessarily works differently. When you join a board, its contents — boards, buckets,
+          tasks, categories, and attachments — are shared with everyone else on that board through a server that is
+          run by whoever set up your board, <strong>not</strong> by ChronoKanban's developer, who operates no
+          server and has no access to your data. Access is protected by a shared board password sent over an
+          encrypted connection.
         </p>
       </div>
 
       <div class="card">
-        <h2>Data stored locally in your browser</h2>
+        <h2>Your board and the collaboration server</h2>
         <p>
-          By default, all of your data — boards, buckets, tasks, categories, attachments, and preferences — is
-          stored in your browser's local storage (IndexedDB and localStorage) on your own device. It is never
-          transmitted anywhere. Clearing your browser's site data for ChronoKanban deletes it permanently, which
-          is why the app periodically reminds you to back up.
+          Your board data is transmitted to and stored on the collaboration server operated by whoever set up your
+          board (the "operator"). They control that server, its contents, and how long the data is kept —
+          ChronoKanban's developer has no server and no access to any of it, and cannot see, log, or recover your
+          board.
+        </p>
+        <ul>
+          <li>
+            Access is guarded by a single <strong>shared board password</strong>, sent over an encrypted
+            (HTTPS/WSS) connection. Anyone who has the password has full read and write access to the board —
+            there are no individual user accounts, and no per-person permissions.
+          </li>
+          <li>
+            A copy of the board is also cached in your own browser (IndexedDB and localStorage) so it keeps working
+            offline; local changes sync back to the server when you reconnect.
+          </li>
+          <li>
+            Any privacy questions about how a specific board's data is stored, retained, or secured are ultimately
+            a matter for that board's operator, since they run the server it lives on.
+          </li>
+        </ul>
+      </div>
+
+      <div class="card">
+        <h2>Data cached in your browser</h2>
+        <p>
+          Your preferences, the remembered board password, and a working copy of your board are kept in your
+          browser's local storage (IndexedDB and localStorage) on your own device. Clearing your browser's site
+          data removes this local copy; on a shared board it re-syncs from the server the next time you connect and
+          re-enter the password.
         </p>
         <p>
-          <strong>Export / Import</strong> lets you download or upload a JSON snapshot of your data yourself.
-          This is a manual, local file operation — nothing is sent over the network.
+          <strong>Export / Import</strong> lets you download or upload a JSON snapshot of your board data yourself.
+          This is a manual, local file operation — the file is created in your browser and nothing is sent to any
+          third party.
         </p>
       </div>
 
@@ -135,9 +168,9 @@
           </li>
           <li>
             Your Google access token is held only in your browser's memory for the current session — it is never
-            written to disk, never stored by ChronoKanban, and never sent to any server operated by us (there is
-            none). It is used solely to make direct calls from your browser to Google's own Drive API, and it
-            expires automatically after about an hour.
+            written to disk, never stored by ChronoKanban, and never sent to the collaboration server or to any
+            server operated by the app's developer (who runs none). It is used solely to make direct calls from
+            your browser to Google's own Drive API, and it expires automatically after about an hour.
           </li>
           <li>
             No one — including the developer — has any way to see the contents of your Drive file or your task

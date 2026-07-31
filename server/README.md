@@ -65,13 +65,49 @@ should appear in the other within a moment. Stop and restart the server: the boa
 (LevelDB persistence). Stop the server while editing: edits keep working locally and sync up when it
 comes back.
 
-## Deploying for real (worldwide access)
+## Quick deploy: Railway + Netlify (easiest)
 
-Everything above runs on `localhost` — nothing outside your own machine can reach it. To let people
-elsewhere connect, you need three things: a server with a **public IP** (a rented VPS), a **domain
-name** pointed at it, and **TLS**, because browsers refuse a plain `ws://` connection from a page
-loaded over `https://` (which is how the client is normally served) — it has to be `wss://`. This
-step packages the server with [Caddy](https://caddyserver.com/) as a reverse proxy, which gets you
+The simplest way to get a board online for a small team — no VPS, domain, or TLS setup, because both
+platforms hand you an HTTPS/WSS URL automatically. You host two things: this **server** on Railway,
+and the **client** (the web app) on Netlify.
+
+**1. Deploy the server on [Railway](https://railway.app):**
+- New Project → Deploy from GitHub repo → pick this repo.
+- In the service **Settings**, set **Root Directory** to `server` (so it builds `server/Dockerfile`).
+  If the server lives on a non-default branch, set that branch here too.
+- In **Variables**, add `COLLAB_TOKEN` = a password of your choice — **this value is the board
+  password** your team will type in. (Optionally add `PORT` and expose it when generating the domain.)
+- **Settings → Networking → Generate Domain.** You'll get e.g. `https://your-app.up.railway.app`.
+- Sanity check: opening that URL in a browser shows the plain text `ChronoKanban collab server`.
+
+**2. Build the client pointed at it.** From the repo root, create `.env.production.local` with:
+
+```
+VITE_COLLAB_SERVER=wss://your-app.up.railway.app
+```
+
+Note `wss://` (not `https://`), and leave `VITE_COLLAB_TOKEN` unset so the app **prompts** each user
+for the board password instead of baking it in. Then run `npm run build`.
+
+**3. Host the client on [Netlify](https://www.netlify.com):** drag the resulting `dist/` folder onto
+[Netlify Drop](https://app.netlify.com/drop) (or deploy it to a Netlify site) to get a public HTTPS
+link.
+
+**4. Share** the Netlify link and the board password with your team. They open the link, enter the
+password, and they're on your board. To change the password later, update `COLLAB_TOKEN` in Railway —
+everyone is re-prompted for the new one on their next visit (no rebuild needed).
+
+> Note: the client is a PWA, so after you redeploy a new build, an already-open browser may serve the
+> old cached version until its service worker updates (a reload or two, or test in a fresh incognito
+> window).
+
+## Deploying for real on your own box (VPS + Docker + Caddy)
+
+The Railway path above is easiest. If you'd rather run it on your own server (a rented VPS), you need
+three things: a server with a **public IP**, a **domain name** pointed at it, and **TLS**, because
+browsers refuse a plain `ws://` connection from a page loaded over `https://` (which is how the client
+is normally served) — it has to be `wss://`. This step packages the server with
+[Caddy](https://caddyserver.com/) as a reverse proxy, which gets you
 `wss://` for free: point a domain at your server and Caddy automatically obtains and renews a TLS
 certificate, no manual certbot/cron setup.
 

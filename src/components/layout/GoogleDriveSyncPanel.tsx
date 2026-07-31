@@ -23,7 +23,7 @@ export function GoogleDriveSyncPanel({ onClose }: GoogleDriveSyncPanelProps) {
           Google Drive sync <span className="text-amber-600 dark:text-amber-400">(beta)</span>
         </h3>
         <p className="mb-3 text-xs text-gray-500 dark:text-gray-400">
-          Keeps a file in your Google Drive automatically up to date, so opening ChronoKanban on another computer
+          Keeps a file in your Google Drive automatically up to date, so opening ChronoKanban Teams on another computer
           picks up your latest data. Same newest-wins behavior as Auto-sync folder, just backed by Drive instead
           of a local folder — connecting one disconnects the other. Re-authentication ~hourly is usually silent,
           but occasionally needs one click.

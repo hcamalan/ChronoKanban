@@ -248,7 +248,7 @@ export function SettingsPanel({ onDataDeleted }: SettingsPanelProps) {
                   setOpen(false)
                   setAutoSyncOpen(true)
                 }}
-                title="Automatically keeps a file in a folder on your computer in sync with your data — so opening ChronoKanban elsewhere picks up your latest boards."
+                title="Automatically keeps a file in a folder on your computer in sync with your data — so opening ChronoKanban Teams elsewhere picks up your latest boards."
                 className="w-full rounded px-1 py-1 text-left text-sm text-gray-700 hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-700"
               >
                 Auto-sync folder…
@@ -274,7 +274,7 @@ export function SettingsPanel({ onDataDeleted }: SettingsPanelProps) {
                   setOpen(false)
                   setGoogleDriveOpen(true)
                 }}
-                title="Automatically keeps a file in a folder in your Google Drive in sync with your data — so opening ChronoKanban on another computer picks up your latest boards. In limited beta while Google verification is pending."
+                title="Automatically keeps a file in a folder in your Google Drive in sync with your data — so opening ChronoKanban Teams on another computer picks up your latest boards. In limited beta while Google verification is pending."
                 className="w-full rounded px-1 py-1 text-left text-sm text-gray-700 hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-700"
               >
                 Google Drive sync (beta)…

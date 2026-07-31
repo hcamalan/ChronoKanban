@@ -28,21 +28,29 @@ function SubChapter({ title, children }: ChapterProps) {
 export function HowToView() {
   return (
     <div className="mx-auto max-w-3xl p-4 text-sm text-gray-700 dark:text-gray-300 sm:p-6">
-      <h1 className="mb-6 text-2xl font-semibold text-gray-900 dark:text-gray-100">How to use ChronoKanban</h1>
+      <h1 className="mb-6 text-2xl font-semibold text-gray-900 dark:text-gray-100">How to use ChronoKanban Teams</h1>
 
       <p className="mb-6">
-        ChronoKanban is the task tracking tool you didn't know you needed. It's a Kanban board with built-in time
-        tracking, analytics dashboards, and a calendar view - running entirely in your browser, with no account
-        and no server. Your boards and tasks never leave your browser unless you explicitly turn on a sync option.
+        ChronoKanban Teams is a collaborative Kanban board with built-in time tracking, analytics dashboards, and
+        a calendar view. Everyone on a board sees each other's changes in real time, and it keeps working offline,
+        syncing back up when you reconnect.
       </p>
 
       <p className="mb-6">
-        ChronoKanban is built for individual use, not for coordinating a team. Because all data lives only in your
-        own browser with nothing shared or synced, there's no practical way for multiple people to see or work
-        from the same board - trying to use it as a team's shared tracker won't work the way a server-backed tool
-        would. The <strong>Assignee</strong> field on task cards is still there, though - not as a step toward
-        team features, but simply to give you the flexibility to use it however suits you, even on a personal
-        board.
+        It's the collaborative sibling of the original{' '}
+        <a
+          href="https://github.com/hcamalan/chronokanban"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-blue-600 underline dark:text-blue-400"
+        >
+          ChronoKanban
+        </a>{' '}
+        - a privacy-first, individual app that deliberately keeps everything in your own browser with no server at
+        all. Teams was built for the opposite need: sharing a board and working on it together. That's the core
+        trade-off to keep in mind - your board is shared through a server (run by whoever set it up), rather than
+        staying only on your device. The <strong>Assignee</strong> field on task cards comes into its own here for
+        divvying work up between people.
       </p>
 
       <section className="mb-8">
@@ -64,18 +72,64 @@ export function HowToView() {
             know exactly where things stand.
           </li>
           <li>
-            <strong>Private by design.</strong> No sign-up, no account, no data ever leaving your browser - and it
-            keeps working with no internet connection at all once it's loaded.
+            <strong>A shared board for a small team.</strong> Everyone joins the same board with one password and
+            works on it together in real time - tasks, buckets, and time tracking stay in sync across everyone,
+            and each person can still keep editing offline, syncing back up when they reconnect.
           </li>
         </ul>
       </section>
 
-      <Chapter title="The example board">
+      <Chapter title="Working as a team">
+        <SubChapter title="Joining a board">
+          <p>
+            When you open a ChronoKanban Teams board, you're asked for the <strong>board password</strong> - a
+            single shared password set by whoever runs the board. Enter it once and this browser remembers it.
+            There are no individual accounts: everyone uses the same password, and anyone who has it has full
+            access to the board.
+          </p>
+        </SubChapter>
+        <SubChapter title="Real-time sync & the connection indicator">
+          <p>
+            Everyone's changes - new tasks, moves, edits, timers, attachments - appear for everyone else within a
+            moment. The dot next to the ChronoKanban Teams name in the top bar shows the connection: green{' '}
+            <strong>Live</strong> when you're connected and synced, amber while connecting or catching up, and grey{' '}
+            <strong>Offline</strong> when the server isn't reachable.
+          </p>
+        </SubChapter>
+        <SubChapter title="Offline-first">
+          <p>
+            Being offline is fine: you can keep editing, and your changes are saved locally and sync up
+            automatically once you're connected again. Because it merges changes rather than overwriting, two
+            people editing at the same time both keep their work.
+          </p>
+        </SubChapter>
+        <SubChapter title="Version history">
+          <p>
+            <strong>Settings → Version history</strong> keeps automatic snapshots of your boards on your device.
+            Restoring one adds it back as a <em>new</em> board (it never overwrites the live one), so you can
+            recover an earlier state without disrupting everyone else. You can also download any snapshot as a
+            backup file.
+          </p>
+        </SubChapter>
+        <SubChapter title="Leaving a board">
+          <p>
+            <strong>Settings → Leave board</strong> signs this browser out and forgets the password. If the person
+            running the board changes the password, everyone is simply asked for the new one the next time they
+            open it.
+          </p>
+        </SubChapter>
+      </Chapter>
+
+      <Chapter title="Your first board">
         <p>
-          The first time you open ChronoKanban, you'll see a worked example board ("Example board (Developer)")
-          with a set of realistic tasks already tracked, so the dashboard and calendar aren't staring back at you
-          empty. It's a normal board - delete it like any other whenever you're ready to start your own. If you
-          ever use Settings → <strong>Delete all my data</strong> to wipe everything, it comes back automatically.
+          When you join a shared board, you'll see whatever's already on it - or an empty board if it's brand new
+          and no one has added anything yet. Just start creating buckets and tasks; everyone else on the board
+          sees them appear.
+        </p>
+        <p>
+          (If you ever open ChronoKanban Teams <em>without</em> connecting to a server - i.e. purely local, like
+          the original ChronoKanban - it seeds a worked "Example board (Developer)" on first run so the dashboard
+          and calendar aren't empty. That example never appears on a shared board.)
         </p>
       </Chapter>
       
@@ -257,20 +311,20 @@ export function HowToView() {
         <p>
           You can also enable <strong>desktop notifications</strong> there: ChronoKanban will warn you when a
           timer has been running for over 8 hours, and give you a once-a-day summary of tasks due today or
-          overdue. Since there's no server, notifications only fire while the app is open in a tab.
+          overdue. These are generated by the app itself, so they only fire while ChronoKanban Teams is open in a
+          tab (there are no pushed notifications).
         </p>
       </Chapter>
 
       <Chapter title="Backing up your data">
         <p>
-          Since everything is stored locally, clearing your browser data would erase it — including browser
-          settings like Chrome's "Clear cookies and site data when you close all windows," which can
-          automatically be turned on without you knowing it. In this case, your data would be deleted after you
-          close the browser window. Installing ChronoKanban as an app
-          also tends to be more durable than a regular tab. Open <strong>Settings</strong> and use{' '}
-          <strong>Export</strong> any time to download a full backup as a JSON file, and{' '}
-          <strong>Import</strong> to restore it later or move it to another browser or device. Importing
-          replaces everything currently in the app, so use it carefully.
+          On a shared board, the board itself lives on its server, so clearing this browser's data just drops the
+          local copy - it re-syncs when you reconnect and re-enter the board password. Even so, it's worth keeping
+          your <em>own</em> backup: open <strong>Settings</strong> and use <strong>Export</strong> any time to
+          download a full snapshot as a JSON file, and <strong>Import</strong> to restore it later or move it to
+          another browser or device. Importing replaces everything currently in the app, so use it carefully.
+          (Export/Import files use the same format as the original ChronoKanban, so you can move boards between the
+          two.)
         </p>
         <p>
           For a more hands-off option, <strong>Settings → Auto-sync folder</strong> lets you pick a folder once
@@ -308,21 +362,66 @@ export function HowToView() {
 
       <Chapter title="Working offline">
         <p>
-          By default, ChronoKanban makes no network calls at all - all your data lives in this browser's local
-          storage. Once you've loaded it here, it keeps working with no internet connection at all, and it can be
-          installed like an app - ChronoKanban offers a one-time install prompt (or, on iPhone/iPad, instructions
-          for adding it to your home screen), or you can always do it manually from your browser's menu.
+          ChronoKanban Teams is offline-first: a full copy of your board is cached in this browser, so it keeps
+          working with no connection at all. Anything you change while offline is saved locally and syncs up to
+          the board automatically once you're connected again - the connection dot in the top bar turns grey{' '}
+          <strong>Offline</strong> and back to green <strong>Live</strong> as this happens.
         </p>
         <p>
-          The only network activity in the app, ever, is something you explicitly turn on (Auto-sync folder or
-          Google Drive sync), or a small anonymous, cookieless page-view counter used to see whether the app is
-          getting any use at all - no personal data, no cookies, and it never touches your boards or tasks.
+          It can be installed like an app - ChronoKanban Teams offers a one-time install prompt (or, on
+          iPhone/iPad, instructions for adding it to your home screen), or you can always do it manually from your
+          browser's menu.
         </p>
         <p>
-          To run it on a machine with no internet access whatsoever, download the source, run{' '}
-          <code className="rounded bg-gray-100 px-1 dark:bg-gray-800">npm run build</code>, and serve the resulting{' '}
-          <code className="rounded bg-gray-100 px-1 dark:bg-gray-800">dist/</code> folder locally - no further
-          setup or connection is required.
+          Aside from talking to your board's own server, the only other network activity is a small anonymous,
+          cookieless page-view counter used to see whether the app is getting any use at all - no personal data,
+          no cookies, and it never touches your boards or tasks.
+        </p>
+      </Chapter>
+
+      <Chapter title="Host your own board">
+        <p>
+          Want to run a board for your own team? You host two free pieces: the small sync <strong>server</strong>{' '}
+          and the <strong>app</strong> itself. Here's the quick path we recommend (full details are in the{' '}
+          <a
+            href="https://github.com/hcamalan/chronokanban"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-blue-600 underline dark:text-blue-400"
+          >
+            project repository
+          </a>{' '}
+          under <code className="rounded bg-gray-100 px-1 dark:bg-gray-800">server/README.md</code>):
+        </p>
+        <ol className="list-decimal space-y-2 pl-5">
+          <li>
+            <strong>Deploy the server on Railway.</strong> Create a project from the repo, set the service's{' '}
+            <em>root directory</em> to <code className="rounded bg-gray-100 px-1 dark:bg-gray-800">server</code>,
+            and add a <code className="rounded bg-gray-100 px-1 dark:bg-gray-800">COLLAB_TOKEN</code> variable - that
+            value <em>is</em> your board password. Generate a public domain; you'll get a URL like{' '}
+            <code className="rounded bg-gray-100 px-1 dark:bg-gray-800">https://your-app.up.railway.app</code>.
+          </li>
+          <li>
+            <strong>Build the app pointed at it.</strong> Set{' '}
+            <code className="rounded bg-gray-100 px-1 dark:bg-gray-800">VITE_COLLAB_SERVER=wss://your-app.up.railway.app</code>{' '}
+            (note <code className="rounded bg-gray-100 px-1 dark:bg-gray-800">wss://</code>) and run{' '}
+            <code className="rounded bg-gray-100 px-1 dark:bg-gray-800">npm run build</code>.
+          </li>
+          <li>
+            <strong>Host the app on Netlify.</strong> Drop the resulting{' '}
+            <code className="rounded bg-gray-100 px-1 dark:bg-gray-800">dist/</code> folder onto Netlify to get a
+            public HTTPS link.
+          </li>
+          <li>
+            <strong>Share it.</strong> Send teammates the Netlify link and the board password. They open the link,
+            enter the password, and they're on your board. To change the password later, just update{' '}
+            <code className="rounded bg-gray-100 px-1 dark:bg-gray-800">COLLAB_TOKEN</code> on Railway - everyone is
+            re-prompted for the new one.
+          </li>
+        </ol>
+        <p>
+          Because you run the server, your board's data lives on infrastructure you control - the app's developer
+          has no server and no access to it.
         </p>
       </Chapter>
     </div>

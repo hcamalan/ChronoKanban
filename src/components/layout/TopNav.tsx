@@ -47,7 +47,7 @@ export function TopNav({ activeTab, onNavigate, hotkeysOpen, onHotkeysOpenChange
           aria-label="Go to boards"
         >
           <img src="./logo.svg" alt="" className="hidden h-7 w-7 md:block" />
-          <span className="text-sm font-semibold text-gray-900 dark:text-gray-100 md:text-lg">ChronoKanban</span>
+          <span className="text-sm font-semibold text-gray-900 dark:text-gray-100 md:text-lg">ChronoKanban Teams</span>
         </button>
         <CollabStatus />
         <nav className="hidden items-center gap-1 md:flex">

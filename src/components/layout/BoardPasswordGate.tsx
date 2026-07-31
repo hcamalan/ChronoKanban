@@ -34,7 +34,7 @@ export function BoardPasswordGate({ onAuthed }: BoardPasswordGateProps) {
       >
         <div className="mb-4 flex items-center gap-2">
           <img src="./logo.svg" alt="" className="h-7 w-7" />
-          <span className="text-lg font-semibold text-gray-900 dark:text-gray-100">ChronoKanban</span>
+          <span className="text-lg font-semibold text-gray-900 dark:text-gray-100">ChronoKanban Teams</span>
         </div>
         <label htmlFor="board-password" className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-200">
           Board password

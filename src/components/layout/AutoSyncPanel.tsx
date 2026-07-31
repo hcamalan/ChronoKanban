@@ -22,7 +22,7 @@ export function AutoSyncPanel({ onClose }: AutoSyncPanelProps) {
         <p className="mb-3 text-xs text-gray-500 dark:text-gray-400">
           Pick a folder on your computer to keep a file there in sync with your data — updated automatically as you
           make changes, and loaded back in when the file there is newer than what this browser last saw (for
-          example, after using ChronoKanban elsewhere pointed at the same folder).
+          example, after using ChronoKanban Teams elsewhere pointed at the same folder).
         </p>
 
         {status === 'unconfigured' && (

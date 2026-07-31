@@ -56,7 +56,7 @@ export function InstallPrompt() {
     <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-blue-200 bg-blue-50 px-4 py-2 text-sm text-blue-900 dark:border-blue-800 dark:bg-blue-950 dark:text-blue-100">
       {deferred ? (
         <>
-          <span>Install ChronoKanban as an app for one-tap access and offline use.</span>
+          <span>Install ChronoKanban Teams as an app for one-tap access and offline use.</span>
           <span className="flex items-center gap-3">
             <button onClick={install} className="font-medium underline hover:no-underline">
               Install

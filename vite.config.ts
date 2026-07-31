@@ -18,9 +18,9 @@ export default defineConfig({
     VitePWA({
       registerType: 'autoUpdate',
       manifest: {
-        name: 'ChronoKanban',
-        short_name: 'ChronoKanban',
-        description: 'A Kanban board with built-in time tracking, running entirely in your browser.',
+        name: 'ChronoKanban Teams',
+        short_name: 'CK Teams',
+        description: 'A collaborative, self-hostable Kanban board with built-in time tracking that also works offline.',
         theme_color: '#111827',
         background_color: '#111827',
         icons: [
