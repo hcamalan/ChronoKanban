@@ -13,9 +13,17 @@ import type { Board, Bucket, TaskCard, Category } from '../types'
  * URL is provided (VITE_COLLAB_SERVER), a `y-websocket` provider attaches to the SAME doc for
  * real-time multi-user sync — both persistences coexist and merge via Yjs. Attachments and the
  * activity log stay in their own IndexedDB stores (via repository); preferences stay in localStorage.
+ *
+ * Personal vs team local storage are kept in SEPARATE IndexedDB rooms so they never cross-merge:
+ * the server-side room name (what identifies the shared doc on the server) is always the same, but
+ * the LOCAL persistence room is namespaced per server in team mode. That way a browser that was
+ * used in local-only mode won't push its personal boards up when it later connects to a team server
+ * (and two different team servers reused at one origin stay isolated too). Note: attachments and the
+ * activity log live in shared, per-origin IndexedDB stores (not namespaced) — benign since both are
+ * keyed by random task ids that don't collide; syncing them is separate, larger work.
  */
 
-const ROOM = 'chronokanban'
+const SERVER_ROOM = 'chronokanban'
 const MIGRATED_KEY = 'chrono-kanban-yjs-migrated'
 
 const SERVER_URL = (import.meta.env.VITE_COLLAB_SERVER as string | undefined)?.trim() || undefined
@@ -23,12 +31,19 @@ const AUTH_TOKEN = (import.meta.env.VITE_COLLAB_TOKEN as string | undefined)?.tr
 /** True when connected to a shared server (team mode) vs. purely local. */
 export const isTeamMode = !!SERVER_URL
 
+// Local IndexedDB cache room. Local-only mode keeps the original 'chronokanban' room (so existing
+// personal data still loads); team mode uses a room derived from the server URL, isolating the team
+// doc's local cache from personal data and from any other team server.
+const LOCAL_ROOM = SERVER_URL
+  ? `chronokanban-team-${SERVER_URL.replace(/[^a-zA-Z0-9]+/g, '-')}`
+  : 'chronokanban'
+
 export const doc = new Y.Doc()
-const persistence = new IndexeddbPersistence(ROOM, doc)
+const persistence = new IndexeddbPersistence(LOCAL_ROOM, doc)
 
 let wsProvider: WebsocketProvider | null = null
 if (SERVER_URL) {
-  wsProvider = new WebsocketProvider(SERVER_URL, ROOM, doc, AUTH_TOKEN ? { params: { token: AUTH_TOKEN } } : undefined)
+  wsProvider = new WebsocketProvider(SERVER_URL, SERVER_ROOM, doc, AUTH_TOKEN ? { params: { token: AUTH_TOKEN } } : undefined)
   wsProvider.on('status', (event: { status: string }) => {
     console.log(`[collab] server ${event.status}`)
   })
