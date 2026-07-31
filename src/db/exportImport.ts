@@ -1,13 +1,16 @@
-import { getDB } from './db'
-import { bulkPutAll, clearAllData, deleteTask } from './repository'
+import { clearAllData } from './repository'
 import { doc, mutate, clearDocEntities } from '../collab/collabDoc'
+import {
+  getAllAttachmentsInDoc,
+  putAttachmentToDoc,
+  deleteAttachmentsForTaskInDoc,
+} from '../collab/attachments'
 import { snapshotSlice } from '../collab/bridge'
 import type { Board, Bucket, TaskCard, Category, Attachment } from '../types'
 
-// Entities (boards/buckets/tasks/categories) live in the Y.Doc; attachment blobs stay in their own
-// IndexedDB store. So export reads entities from the doc, and import/replace writes them to the doc,
-// while attachments continue to go through the repository. `bulkPutAll` is used attachments-only.
-const NO_ENTITIES = { boards: [], buckets: [], tasks: [], categories: [] }
+// Entities (boards/buckets/tasks/categories) AND attachments all live in the Y.Doc now, so export
+// reads everything from the doc and import/replace writes it back to the doc. The activity log stays
+// in IndexedDB (via `clearAllData` on a full replace).
 
 export interface ExportFile {
   version: 1
@@ -41,8 +44,7 @@ async function base64ToBlob(dataUrl: string): Promise<Blob> {
 }
 
 export async function buildExportFile(): Promise<ExportFile> {
-  const db = await getDB()
-  const allAttachments = await db.getAll('attachments')
+  const allAttachments = getAllAttachmentsInDoc()
   const boards = Object.values(snapshotSlice(doc, 'boards'))
   const buckets = Object.values(snapshotSlice(doc, 'buckets'))
   const tasks = Object.values(snapshotSlice(doc, 'tasks'))
@@ -110,15 +112,15 @@ export async function replaceAllDataWithSnapshot(data: ExportFile): Promise<void
       createdAt: Date.now(),
     })),
   )
-  await clearAllData() // wipes attachments + activity log (+ now-unused stale entity stores)
-  clearDocEntities()
+  await clearAllData() // wipes activity log (+ now-unused stale entity/attachment stores)
+  clearDocEntities() // wipes the doc's entities + attachments
   mutate((ops) => {
     data.boards.forEach((b) => ops.put('boards', b))
     data.buckets.forEach((b) => ops.put('buckets', b))
     data.tasks.forEach((t) => ops.put('tasks', t))
     data.categories.forEach((c) => ops.put('categories', c))
   })
-  await bulkPutAll({ ...NO_ENTITIES, attachments })
+  await Promise.all(attachments.map((a) => putAttachmentToDoc(a)))
 }
 
 export interface BoardConflict {
@@ -221,13 +223,13 @@ export async function mergeImportFile(
   }
 
   // Overwrite = remove the existing board's whole subtree from the doc first. Snapshot the doc once
-  // to find those entities, and clean the overwritten tasks' attachments via repo.deleteTask.
+  // to find those entities, and clean the overwritten tasks' attachments from the doc.
   const existingBuckets = snapshotSlice(doc, 'buckets')
   const existingTasks = snapshotSlice(doc, 'tasks')
   const existingCategories = snapshotSlice(doc, 'categories')
   for (const boardId of boardIdsToDeleteCascade) {
     for (const t of Object.values(existingTasks).filter((t) => t.boardId === boardId)) {
-      await deleteTask(t.id)
+      deleteAttachmentsForTaskInDoc(t.id)
     }
   }
 
@@ -245,5 +247,5 @@ export async function mergeImportFile(
     categoriesToInsert.forEach((c) => ops.put('categories', c))
     tasksToInsert.forEach((t) => ops.put('tasks', t))
   })
-  await bulkPutAll({ ...NO_ENTITIES, attachments: attachmentsToInsert })
+  await Promise.all(attachmentsToInsert.map((a) => putAttachmentToDoc(a)))
 }

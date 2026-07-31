@@ -6,6 +6,7 @@ import { createDebouncer } from './persist'
 import { loadPreferences, savePreferences } from './preferencesStorage'
 import { markExported } from './backupStorage'
 import { mutate, initCollab, clearDocEntities, seedExampleIntoDoc, type CollabStatus } from '../collab/collabDoc'
+import { deleteAttachmentsForTaskInDoc } from '../collab/attachments'
 import { addToDateString } from '../utils/time'
 import type { Board, Bucket, TaskCard, Category, Preferences } from '../types'
 
@@ -145,7 +146,7 @@ export const useStore = create<AppState>((set, get) => {
       // Deferred, undo-unsafe parts only: clean each affected task's attachments + log the delete.
       const commit = () => {
         for (const t of affectedTasks) {
-          repo.deleteTask(t.id)
+          deleteAttachmentsForTaskInDoc(t.id)
           logActivity(t.id, t.name, 'delete', t.status)
         }
       }
@@ -250,7 +251,7 @@ export const useStore = create<AppState>((set, get) => {
       })
       const commit = () => {
         for (const t of affectedTasks) {
-          repo.deleteTask(t.id)
+          deleteAttachmentsForTaskInDoc(t.id)
           logActivity(t.id, t.name, 'delete', t.status)
         }
       }
@@ -360,7 +361,7 @@ export const useStore = create<AppState>((set, get) => {
       finalizePendingDeletion()
       mutate((ops) => ops.delete('tasks', id))
       const commit = () => {
-        repo.deleteTask(id)
+        deleteAttachmentsForTaskInDoc(id)
         logActivity(id, task.name, 'delete', task.status)
       }
       const timeoutId = setTimeout(() => {
@@ -383,7 +384,7 @@ export const useStore = create<AppState>((set, get) => {
       mutate((ops) => tasksToDelete.forEach((t) => ops.delete('tasks', t.id)))
       const commit = () => {
         for (const t of tasksToDelete) {
-          repo.deleteTask(t.id)
+          deleteAttachmentsForTaskInDoc(t.id)
           logActivity(t.id, t.name, 'delete', t.status)
         }
       }

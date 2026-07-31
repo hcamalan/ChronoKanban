@@ -5,6 +5,7 @@ import * as repo from '../db/repository'
 import { buildExampleBoardData, hasSeededExampleBefore, markExampleSeeded } from '../db/exampleBoard'
 import { getEntityMap, ENTITY_KEYS } from './schema'
 import { transact, observeSlice, snapshotSlice, type Ops } from './bridge'
+import { putAttachmentToDoc, clearAttachmentsInDoc } from './attachments'
 import type { Board, Bucket, TaskCard, Category } from '../types'
 
 /**
@@ -61,10 +62,11 @@ export function mutate(fn: (ops: Ops) => void): void {
   transact(doc, fn)
 }
 
-/** Wipe all four entity maps (used by "Delete all my data" before reseeding). */
+/** Wipe all entity maps + attachments (used by "Delete all my data" and full-replace import). */
 export function clearDocEntities(): void {
   doc.transact(() => {
     for (const key of ENTITY_KEYS) getEntityMap(doc, key).clear()
+    clearAttachmentsInDoc()
   })
 }
 
@@ -101,6 +103,9 @@ async function migrateFromRepo(): Promise<boolean> {
     )
     categories.forEach((c) => ops.put('categories', c))
   })
+  // Attachments now live in the doc too; bring existing local files along (blob -> bytes).
+  const attachments = await repo.getAllAttachments()
+  await Promise.all(attachments.map((a) => putAttachmentToDoc(a)))
   return true
 }
 

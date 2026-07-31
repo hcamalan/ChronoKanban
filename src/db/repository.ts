@@ -55,6 +55,10 @@ export async function getAttachmentsForTask(taskId: string): Promise<Attachment[
   const db = await getDB()
   return db.getAllFromIndex('attachments', 'by-task', taskId)
 }
+export async function getAllAttachments(): Promise<Attachment[]> {
+  const db = await getDB()
+  return db.getAll('attachments')
+}
 export async function putAttachment(attachment: Attachment) {
   const db = await getDB()
   await db.put('attachments', attachment)
@@ -126,28 +130,6 @@ export async function seedDatabase(data: {
     ...data.tasks.map((t) => tx.objectStore('tasks').put(t)),
     ...data.categories.map((c) => tx.objectStore('categories').put(c)),
     ...data.activityLog.map((e) => tx.objectStore('activityLog').put(e)),
-  ])
-  await tx.done
-}
-
-export async function bulkPutAll(data: {
-  boards: Board[]
-  buckets: Bucket[]
-  tasks: TaskCard[]
-  categories: Category[]
-  attachments: Attachment[]
-}) {
-  const db = await getDB()
-  const tx = db.transaction(
-    ['boards', 'buckets', 'tasks', 'categories', 'attachments'],
-    'readwrite',
-  )
-  await Promise.all([
-    ...data.boards.map((b) => tx.objectStore('boards').put(b)),
-    ...data.buckets.map((b) => tx.objectStore('buckets').put(b)),
-    ...data.tasks.map((t) => tx.objectStore('tasks').put(t)),
-    ...data.categories.map((c) => tx.objectStore('categories').put(c)),
-    ...data.attachments.map((a) => tx.objectStore('attachments').put(a)),
   ])
   await tx.done
 }

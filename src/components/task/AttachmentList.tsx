@@ -1,5 +1,11 @@
 import { useEffect, useState } from 'react'
-import { getAttachmentsForTask, putAttachment, deleteAttachment } from '../../db/repository'
+import {
+  getAttachmentsForTaskInDoc,
+  putAttachmentToDoc,
+  deleteAttachmentFromDoc,
+  observeAttachments,
+  MAX_ATTACHMENT_BYTES,
+} from '../../collab/attachments'
 import type { Attachment } from '../../types'
 
 interface AttachmentListProps {
@@ -9,15 +15,14 @@ interface AttachmentListProps {
 export function AttachmentList({ taskId }: AttachmentListProps) {
   const [attachments, setAttachments] = useState<Attachment[]>([])
   const [urls, setUrls] = useState<Record<string, string>>({})
+  const [error, setError] = useState<string | null>(null)
 
+  // Read the task's attachments from the doc and keep them live: a teammate's add/remove (or an
+  // import) fires the observer, so the open task reflects it without reopening.
   useEffect(() => {
-    let cancelled = false
-    getAttachmentsForTask(taskId).then((list) => {
-      if (!cancelled) setAttachments(list)
-    })
-    return () => {
-      cancelled = true
-    }
+    const refresh = () => setAttachments(getAttachmentsForTaskInDoc(taskId))
+    refresh()
+    return observeAttachments(refresh)
   }, [taskId])
 
   useEffect(() => {
@@ -34,6 +39,12 @@ export function AttachmentList({ taskId }: AttachmentListProps) {
   async function handleFileSelected(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
     if (!file) return
+    e.target.value = ''
+    if (file.size > MAX_ATTACHMENT_BYTES) {
+      setError(`"${file.name}" is too large. Attachments must be ${MAX_ATTACHMENT_BYTES / (1024 * 1024)} MB or smaller.`)
+      return
+    }
+    setError(null)
     const attachment: Attachment = {
       id: crypto.randomUUID(),
       taskId,
@@ -43,14 +54,13 @@ export function AttachmentList({ taskId }: AttachmentListProps) {
       blob: file,
       createdAt: Date.now(),
     }
-    await putAttachment(attachment)
-    setAttachments((prev) => [...prev, attachment])
-    e.target.value = ''
+    await putAttachmentToDoc(attachment)
+    // The observer refreshes the list from the doc.
   }
 
-  async function handleDelete(id: string) {
-    await deleteAttachment(id)
-    setAttachments((prev) => prev.filter((a) => a.id !== id))
+  function handleDelete(id: string) {
+    deleteAttachmentFromDoc(id)
+    // The observer refreshes the list from the doc.
   }
 
   return (
@@ -86,6 +96,7 @@ export function AttachmentList({ taskId }: AttachmentListProps) {
         onChange={handleFileSelected}
         className="text-sm text-gray-600 file:mr-3 file:rounded file:border-0 file:bg-gray-900 file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-white hover:file:bg-gray-700 dark:text-gray-300 dark:file:bg-gray-100 dark:file:text-gray-900 dark:hover:file:bg-gray-300"
       />
+      {error && <p className="mt-2 text-sm text-red-600 dark:text-red-400">{error}</p>}
     </div>
   )
 }
