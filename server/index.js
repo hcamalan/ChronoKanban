@@ -23,6 +23,9 @@ const PORT = Number(process.env.PORT) || 1234
 const HOST = process.env.HOST || '0.0.0.0'
 const DATA_DIR = process.env.YPERSISTENCE || './data'
 const PING_TIMEOUT = 30000
+// Shared-secret gate: if set, every connection must present it as a `?token=` query param. Unset
+// (the default) keeps today's open-access behavior for local dev.
+const AUTH_TOKEN = process.env.COLLAB_TOKEN || undefined
 
 const messageSync = 0
 const messageAwareness = 1
@@ -198,7 +201,15 @@ const server = http.createServer((_req, res) => {
   res.end('ChronoKanban collab server\n')
 })
 
-const wss = new WebSocketServer({ server })
+const wss = new WebSocketServer({
+  server,
+  verifyClient: (info, callback) => {
+    if (!AUTH_TOKEN) return callback(true)
+    const token = new URL(info.req.url, 'http://localhost').searchParams.get('token')
+    if (token === AUTH_TOKEN) return callback(true)
+    callback(false, 401, 'Unauthorized')
+  },
+})
 wss.on('connection', (conn, req) => setupWSConnection(conn, req))
 
 server.listen(PORT, HOST, () => {

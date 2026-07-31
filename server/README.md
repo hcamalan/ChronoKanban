@@ -22,22 +22,40 @@ npm start
   native binding). It's benign — the package ships prebuilt binaries that load without running that
   script, so persistence works regardless.
 
+### Optional: shared-secret auth
+
+By default the server accepts any connection — fine for a quick localhost test, not fine for
+anything reachable by other people. Set `COLLAB_TOKEN` to require every client to present it:
+
+```
+COLLAB_TOKEN=some-shared-secret npm start
+```
+
+When set, a connection without the matching `?token=` query param is rejected before it can read or
+write anything. The token travels as a plaintext query string, so it only provides real protection
+over `ws://localhost`, a trusted LAN, or (better) behind TLS (`wss://` via a reverse proxy) — TLS
+setup isn't part of this step yet.
+
 ## Point the client at it
 
-Team mode is opt-in via an environment variable read at build/dev time by the Vite client. Create a
+Team mode is opt-in via environment variables read at build/dev time by the Vite client. Create a
 **`.env.local`** in the repository root (it's gitignored):
 
 ```
 VITE_COLLAB_SERVER=ws://localhost:1234
+VITE_COLLAB_TOKEN=some-shared-secret
 ```
 
-Then, from the repository root:
+`VITE_COLLAB_TOKEN` is only needed if the server was started with `COLLAB_TOKEN` set, and must match
+it exactly. Then, from the repository root:
 
 ```
 npm run dev
 ```
 
-Without `.env.local`, `npm run dev` runs the normal local-first app (no server connection).
+Without `.env.local`, `npm run dev` runs the normal local-first app (no server connection). Note
+these are **build-time** values: everyone who uses a given deployment shares whatever server/token
+were baked in when it was built — there's no in-app screen to enter them per-user.
 
 ## Verifying realtime sync
 

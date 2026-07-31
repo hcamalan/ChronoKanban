@@ -19,6 +19,7 @@ const ROOM = 'chronokanban'
 const MIGRATED_KEY = 'chrono-kanban-yjs-migrated'
 
 const SERVER_URL = (import.meta.env.VITE_COLLAB_SERVER as string | undefined)?.trim() || undefined
+const AUTH_TOKEN = (import.meta.env.VITE_COLLAB_TOKEN as string | undefined)?.trim() || undefined
 /** True when connected to a shared server (team mode) vs. purely local. */
 export const isTeamMode = !!SERVER_URL
 
@@ -27,7 +28,7 @@ const persistence = new IndexeddbPersistence(ROOM, doc)
 
 let wsProvider: WebsocketProvider | null = null
 if (SERVER_URL) {
-  wsProvider = new WebsocketProvider(SERVER_URL, ROOM, doc)
+  wsProvider = new WebsocketProvider(SERVER_URL, ROOM, doc, AUTH_TOKEN ? { params: { token: AUTH_TOKEN } } : undefined)
   wsProvider.on('status', (event: { status: string }) => {
     console.log(`[collab] server ${event.status}`)
   })
