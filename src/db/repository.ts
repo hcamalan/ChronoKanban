@@ -1,5 +1,5 @@
 import { getDB } from './db'
-import type { Board, Bucket, TaskCard, Category, Attachment, ActivityLogEntry } from '../types'
+import type { Board, Bucket, TaskCard, Category, Attachment, ActivityLogEntry, Checkpoint } from '../types'
 
 export async function getAllBoards(): Promise<Board[]> {
   const db = await getDB()
@@ -105,7 +105,20 @@ export async function deleteActivityLogEntry(id: string) {
   await db.delete('activityLog', id)
 }
 
-const ALL_STORE_NAMES = ['boards', 'buckets', 'tasks', 'categories', 'attachments', 'activityLog'] as const
+export async function getAllCheckpoints(): Promise<Checkpoint[]> {
+  const db = await getDB()
+  return db.getAll('checkpoints')
+}
+export async function putCheckpoint(checkpoint: Checkpoint) {
+  const db = await getDB()
+  await db.put('checkpoints', checkpoint)
+}
+export async function deleteCheckpoint(id: string) {
+  const db = await getDB()
+  await db.delete('checkpoints', id)
+}
+
+const ALL_STORE_NAMES = ['boards', 'buckets', 'tasks', 'categories', 'attachments', 'activityLog', 'checkpoints'] as const
 
 export async function clearAllData() {
   const db = await getDB()

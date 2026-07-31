@@ -107,6 +107,18 @@ export type ActivityActionType =
   | 'delete'
   | 'manual-adjustment'
 
+/** A point-in-time snapshot of the board entities (not attachments), for the version-history feature. */
+export interface Checkpoint {
+  id: string
+  createdAt: number
+  entities: {
+    boards: Board[]
+    buckets: Bucket[]
+    tasks: TaskCard[]
+    categories: Category[]
+  }
+}
+
 export interface ActivityLogEntry {
   id: string
   taskId: string

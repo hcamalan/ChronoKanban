@@ -43,6 +43,39 @@ async function base64ToBlob(dataUrl: string): Promise<Blob> {
   return res.blob()
 }
 
+/**
+ * Re-key a board and its subtree under fresh ids (new board/bucket/task/category ids, references
+ * remapped, board name suffixed) so it can be inserted alongside an existing board without
+ * overwriting it. Returns the re-keyed entities plus the old→new task-id map, so callers that also
+ * move attachments (which key off taskId) can remap those too. Used by "keep both" on import and by
+ * restoring a version-history checkpoint as a new board.
+ */
+export function reKeyBoardSubtree(
+  board: Board,
+  buckets: Bucket[],
+  tasks: TaskCard[],
+  categories: Category[],
+  nameSuffix: string,
+): { board: Board; buckets: Bucket[]; tasks: TaskCard[]; categories: Category[]; taskIdMap: Map<string, string> } {
+  const newBoardId = crypto.randomUUID()
+  const bucketIdMap = new Map(buckets.map((b) => [b.id, crypto.randomUUID()]))
+  const taskIdMap = new Map(tasks.map((t) => [t.id, crypto.randomUUID()]))
+  const categoryIdMap = new Map(categories.map((c) => [c.id, crypto.randomUUID()]))
+  return {
+    board: { ...board, id: newBoardId, name: `${board.name}${nameSuffix}` },
+    buckets: buckets.map((b) => ({ ...b, id: bucketIdMap.get(b.id)!, boardId: newBoardId })),
+    categories: categories.map((c) => ({ ...c, id: categoryIdMap.get(c.id)!, boardId: newBoardId })),
+    tasks: tasks.map((t) => ({
+      ...t,
+      id: taskIdMap.get(t.id)!,
+      boardId: newBoardId,
+      bucketId: bucketIdMap.get(t.bucketId) ?? t.bucketId,
+      categoryId: t.categoryId ? (categoryIdMap.get(t.categoryId) ?? null) : null,
+    })),
+    taskIdMap,
+  }
+}
+
 export async function buildExportFile(): Promise<ExportFile> {
   const allAttachments = getAllAttachmentsInDoc()
   const boards = Object.values(snapshotSlice(doc, 'boards'))
@@ -191,27 +224,13 @@ export async function mergeImportFile(
       // category ids are identical to that existing board's — re-key everything under fresh ids
       // instead, otherwise `put` would overwrite the existing board's records in place rather
       // than creating a separate one alongside it.
-      const newBoardId = crypto.randomUUID()
-      const bucketIdMap = new Map(boardBuckets.map((b) => [b.id, crypto.randomUUID()]))
-      const taskIdMap = new Map(boardTasks.map((t) => [t.id, crypto.randomUUID()]))
-      const categoryIdMap = new Map(boardCategories.map((c) => [c.id, crypto.randomUUID()]))
-
-      boardsToInsert.push({ ...incomingBoard, id: newBoardId, name: `${incomingBoard.name}_` })
-      bucketsToInsert.push(...boardBuckets.map((b) => ({ ...b, id: bucketIdMap.get(b.id)!, boardId: newBoardId })))
-      categoriesToInsert.push(
-        ...boardCategories.map((c) => ({ ...c, id: categoryIdMap.get(c.id)!, boardId: newBoardId })),
-      )
-      tasksToInsert.push(
-        ...boardTasks.map((t) => ({
-          ...t,
-          id: taskIdMap.get(t.id)!,
-          boardId: newBoardId,
-          bucketId: bucketIdMap.get(t.bucketId) ?? t.bucketId,
-          categoryId: t.categoryId ? (categoryIdMap.get(t.categoryId) ?? null) : null,
-        })),
-      )
+      const rekeyed = reKeyBoardSubtree(incomingBoard, boardBuckets, boardTasks, boardCategories, '_')
+      boardsToInsert.push(rekeyed.board)
+      bucketsToInsert.push(...rekeyed.buckets)
+      categoriesToInsert.push(...rekeyed.categories)
+      tasksToInsert.push(...rekeyed.tasks)
       attachmentsToInsert.push(
-        ...boardAttachments.map((a) => ({ ...a, id: crypto.randomUUID(), taskId: taskIdMap.get(a.taskId) ?? a.taskId })),
+        ...boardAttachments.map((a) => ({ ...a, id: crypto.randomUUID(), taskId: rekeyed.taskIdMap.get(a.taskId) ?? a.taskId })),
       )
     } else {
       boardsToInsert.push(incomingBoard)

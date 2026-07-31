@@ -4,6 +4,7 @@ import { DarkModeToggle } from './DarkModeToggle'
 import { ConfirmDialog } from '../boards/ConfirmDialog'
 import { ImportConflictDialog } from '../boards/ImportConflictDialog'
 import { FieldsPanel } from './FieldsPanel'
+import { VersionHistoryModal } from './VersionHistoryModal'
 import { AutoSyncPanel } from './AutoSyncPanel'
 import { isAutoSyncSupported, useAutoSyncStore } from '../../store/useAutoSyncStore'
 import { GoogleDriveSyncPanel } from './GoogleDriveSyncPanel'
@@ -50,6 +51,7 @@ export function SettingsPanel({ onDataDeleted }: SettingsPanelProps) {
   const [open, setOpen] = useState(false)
   const [confirmingDelete, setConfirmingDelete] = useState(false)
   const [fieldsOpen, setFieldsOpen] = useState(false)
+  const [versionHistoryOpen, setVersionHistoryOpen] = useState(false)
   const [autoSyncOpen, setAutoSyncOpen] = useState(false)
   const [googleDriveOpen, setGoogleDriveOpen] = useState(false)
   const [importFlow, setImportFlow] = useState<ImportFlow | null>(null)
@@ -306,6 +308,19 @@ export function SettingsPanel({ onDataDeleted }: SettingsPanelProps) {
             <button
               onClick={() => {
                 setOpen(false)
+                setVersionHistoryOpen(true)
+              }}
+              title="Automatic on-device snapshots of your boards. Restore an earlier version as a new board without touching your current one."
+              className="w-full rounded px-1 py-1 text-left text-sm text-gray-700 hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-700"
+            >
+              Version history…
+            </button>
+          </div>
+
+          <div className="mt-3 border-t border-gray-200 pt-3 dark:border-gray-700">
+            <button
+              onClick={() => {
+                setOpen(false)
                 setConfirmingDelete(true)
               }}
               className="w-full rounded px-1 py-1 text-left text-sm text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-950"
@@ -325,6 +340,16 @@ export function SettingsPanel({ onDataDeleted }: SettingsPanelProps) {
       />
 
       {fieldsOpen && <FieldsPanel onClose={() => setFieldsOpen(false)} />}
+
+      {versionHistoryOpen && (
+        <VersionHistoryModal
+          onClose={() => setVersionHistoryOpen(false)}
+          onRestored={() => {
+            setVersionHistoryOpen(false)
+            onDataDeleted()
+          }}
+        />
+      )}
 
       {autoSyncOpen && <AutoSyncPanel onClose={() => setAutoSyncOpen(false)} />}
 

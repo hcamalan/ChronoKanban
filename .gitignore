@@ -32,3 +32,6 @@ server/.env
 .claude/scheduled_tasks.lock
 CLAUDE.md
 prd.md
+
+# Local-only architecture reference (intentionally not in the repo)
+docs/collab-architecture.md

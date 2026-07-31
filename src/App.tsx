@@ -4,6 +4,7 @@ import { useAutoSyncStore } from './store/useAutoSyncStore'
 import { useGoogleDriveSyncStore } from './store/useGoogleDriveSyncStore'
 import { useNotificationWatcher } from './hooks/useNotificationWatcher'
 import { ensureInitialGracePeriod } from './store/backupStorage'
+import { startCheckpointScheduler } from './collab/checkpoints'
 import { TopNav } from './components/layout/TopNav'
 import { GoogleDriveSyncBanner } from './components/layout/GoogleDriveSyncBanner'
 import { Footer } from './components/layout/Footer'
@@ -41,6 +42,7 @@ function App() {
     ;(async () => {
       await loadFromDB()
       ensureInitialGracePeriod()
+      startCheckpointScheduler()
       await useAutoSyncStore.getState().init()
       await useGoogleDriveSyncStore.getState().init()
     })()
