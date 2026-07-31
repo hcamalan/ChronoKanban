@@ -1,0 +1,30 @@
+services:
+  collab:
+    build: .
+    restart: unless-stopped
+    environment:
+      COLLAB_TOKEN: ${COLLAB_TOKEN}
+    volumes:
+      - collab_data:/app/data
+    expose:
+      - "1234"
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      DOMAIN: ${DOMAIN}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - collab
+
+volumes:
+  collab_data:
+  caddy_data:
+  caddy_config:

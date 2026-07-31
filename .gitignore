@@ -12,8 +12,9 @@ dist
 dist-ssr
 *.local
 
-# Collab server runtime data (self-hosted LevelDB store)
+# Collab server runtime data (self-hosted LevelDB store) and real deploy secrets
 server/data
+server/.env
 
 # Editor directories and files
 .vscode/*
