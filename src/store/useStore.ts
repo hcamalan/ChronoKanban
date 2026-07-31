@@ -5,7 +5,7 @@ import { logActivity, downloadTimesheetCsv, purgeCurrentRunLog, type WorkInterva
 import { createDebouncer } from './persist'
 import { loadPreferences, savePreferences } from './preferencesStorage'
 import { markExported } from './backupStorage'
-import { mutate, initCollab, clearDocEntities, seedExampleIntoDoc } from '../collab/collabDoc'
+import { mutate, initCollab, clearDocEntities, seedExampleIntoDoc, type CollabStatus } from '../collab/collabDoc'
 import { addToDateString } from '../utils/time'
 import type { Board, Bucket, TaskCard, Category, Preferences } from '../types'
 
@@ -29,6 +29,7 @@ interface AppState {
   tasks: Record<string, TaskCard>
   categories: Record<string, Category>
   loaded: boolean
+  collabStatus: CollabStatus
   preferences: Preferences
   pendingDeletion: PendingDeletion | null
   // Transient signal: a freshly-created bucket whose name field should auto-open + scroll into view.
@@ -92,6 +93,7 @@ export const useStore = create<AppState>((set, get) => {
     tasks: {},
     categories: {},
     loaded: false,
+    collabStatus: 'connecting',
     preferences: loadPreferences(),
     pendingDeletion: null,
     pendingEditBucketId: null,

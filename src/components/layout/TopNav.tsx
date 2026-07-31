@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { SettingsPanel } from './SettingsPanel'
 import { HotkeysPanel } from './HotkeysPanel'
 import { DonatePanel } from './DonatePanel'
+import { CollabStatus } from './CollabStatus'
 
 interface TopNavProps {
   activeTab: 'boards' | 'today' | 'dashboard' | 'howto'
@@ -48,6 +49,7 @@ export function TopNav({ activeTab, onNavigate, hotkeysOpen, onHotkeysOpenChange
           <img src="./logo.svg" alt="" className="hidden h-7 w-7 md:block" />
           <span className="text-sm font-semibold text-gray-900 dark:text-gray-100 md:text-lg">ChronoKanban</span>
         </button>
+        <CollabStatus />
         <nav className="hidden items-center gap-1 md:flex">
           <button onClick={() => onNavigate('boards')} className={tabClass('boards')}>
             Boards

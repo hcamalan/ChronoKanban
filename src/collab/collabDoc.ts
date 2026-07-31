@@ -23,6 +23,9 @@ import type { Board, Bucket, TaskCard, Category } from '../types'
  * keyed by random task ids that don't collide; syncing them is separate, larger work.
  */
 
+/** Team-mode connection state, surfaced to the UI. Meaningless (and hidden) in local-only mode. */
+export type CollabStatus = 'connecting' | 'syncing' | 'connected' | 'offline'
+
 const SERVER_ROOM = 'chronokanban'
 const MIGRATED_KEY = 'chrono-kanban-yjs-migrated'
 
@@ -44,9 +47,13 @@ const persistence = new IndexeddbPersistence(LOCAL_ROOM, doc)
 let wsProvider: WebsocketProvider | null = null
 if (SERVER_URL) {
   wsProvider = new WebsocketProvider(SERVER_URL, SERVER_ROOM, doc, AUTH_TOKEN ? { params: { token: AUTH_TOKEN } } : undefined)
-  wsProvider.on('status', (event: { status: string }) => {
-    console.log(`[collab] server ${event.status}`)
-  })
+}
+
+/** Collapse the provider's socket state + sync flag into the single status the UI shows. */
+function deriveCollabStatus(): CollabStatus {
+  if (!wsProvider) return 'offline'
+  if (!wsProvider.wsconnected) return wsProvider.wsconnecting ? 'connecting' : 'offline'
+  return wsProvider.synced ? 'connected' : 'syncing'
 }
 
 /** Run one or many entity writes in a single transaction (see bridge `transact`). */
@@ -103,6 +110,7 @@ type SliceSetter = (partial: {
   tasks?: Record<string, TaskCard>
   categories?: Record<string, Category>
   loaded?: boolean
+  collabStatus?: CollabStatus
 }) => void
 
 /**
@@ -124,6 +132,15 @@ export async function initCollab(set: SliceSetter): Promise<void> {
     } else if (!hasSeededExampleBefore()) {
       seedExampleIntoDoc()
     }
+  }
+
+  // Surface the team-mode connection status to the store (both events can change it). Seed once now,
+  // since a status change may have already fired before init ran.
+  if (wsProvider) {
+    const pushStatus = () => set({ collabStatus: deriveCollabStatus() })
+    wsProvider.on('status', pushStatus)
+    wsProvider.on('sync', pushStatus)
+    pushStatus()
   }
 
   observeSlice(doc, 'boards', (boards) => set({ boards }))
