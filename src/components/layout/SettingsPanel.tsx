@@ -3,6 +3,7 @@ import { useStore } from '../../store/useStore'
 import { DarkModeToggle } from './DarkModeToggle'
 import { ConfirmDialog } from '../boards/ConfirmDialog'
 import { ImportConflictDialog } from '../boards/ImportConflictDialog'
+import { BoardSelectDialog } from '../boards/BoardSelectDialog'
 import { FieldsPanel } from './FieldsPanel'
 import { VersionHistoryModal } from './VersionHistoryModal'
 import { isTeamMode, signOut } from '../../collab/collabDoc'
@@ -16,8 +17,10 @@ import {
   parseImportFile,
   findBoardConflicts,
   mergeImportFile,
+  filterExportToBoards,
   type BoardConflict,
   type ConflictDecision,
+  type ExportFile,
 } from '../../db/exportImport'
 import type { DateFormat, ColorMode } from '../../types'
 
@@ -56,6 +59,8 @@ export function SettingsPanel({ onDataDeleted }: SettingsPanelProps) {
   const [autoSyncOpen, setAutoSyncOpen] = useState(false)
   const [googleDriveOpen, setGoogleDriveOpen] = useState(false)
   const [importFlow, setImportFlow] = useState<ImportFlow | null>(null)
+  const [exportSelectOpen, setExportSelectOpen] = useState(false)
+  const [importSelect, setImportSelect] = useState<{ data: ExportFile } | null>(null)
   const ref = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const preferences = useStore((s) => s.preferences)
@@ -87,7 +92,12 @@ export function SettingsPanel({ onDataDeleted }: SettingsPanelProps) {
       window.alert('This file could not be read as a ChronoKanban export.')
       return
     }
+    // Let the user choose which of the file's boards to import before merging.
+    setImportSelect({ data })
+  }
 
+  async function startImport(data: ExportFile) {
+    setImportSelect(null)
     const existingBoards = Object.values(useStore.getState().boards)
     const conflicts = findBoardConflicts(data, existingBoards)
 
@@ -223,7 +233,7 @@ export function SettingsPanel({ onDataDeleted }: SettingsPanelProps) {
           <div className="mt-3 flex gap-1 border-t border-gray-200 pt-3 dark:border-gray-700">
             <button
               onClick={() => {
-                exportData()
+                setExportSelectOpen(true)
                 setOpen(false)
               }}
               className="flex-1 rounded px-1 py-1 text-left text-sm text-gray-700 hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-700"
@@ -354,6 +364,31 @@ export function SettingsPanel({ onDataDeleted }: SettingsPanelProps) {
         onChange={handleFileSelected}
         className="hidden"
       />
+
+      {exportSelectOpen && (
+        <BoardSelectDialog
+          title="Export boards"
+          description="Choose which boards to include in the export file."
+          boards={Object.values(useStore.getState().boards).sort((a, b) => a.order - b.order)}
+          confirmLabel="Export"
+          onConfirm={(ids) => {
+            exportData(ids)
+            setExportSelectOpen(false)
+          }}
+          onCancel={() => setExportSelectOpen(false)}
+        />
+      )}
+
+      {importSelect && (
+        <BoardSelectDialog
+          title="Import boards"
+          description="Choose which boards from this file to import."
+          boards={importSelect.data.boards}
+          confirmLabel="Import"
+          onConfirm={(ids) => startImport(filterExportToBoards(importSelect.data, ids))}
+          onCancel={() => setImportSelect(null)}
+        />
+      )}
 
       {fieldsOpen && <FieldsPanel onClose={() => setFieldsOpen(false)} />}
 

@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import * as repo from '../db/repository'
-import { buildExportFile, downloadExportFile, replaceAllDataWithSnapshot, type ExportFile } from '../db/exportImport'
+import { buildExportFile, downloadExportFile, filterExportToBoards, replaceAllDataWithSnapshot, type ExportFile } from '../db/exportImport'
 import { logActivity, downloadTimesheetCsv, purgeCurrentRunLog, type WorkInterval } from '../db/activityLog'
 import { createDebouncer } from './persist'
 import { loadPreferences, savePreferences } from './preferencesStorage'
@@ -73,7 +73,7 @@ interface AppState {
   updateCategory: (id: string, patch: Partial<Category>) => void
   deleteCategory: (id: string) => void
 
-  exportData: () => Promise<void>
+  exportData: (boardIds?: string[]) => Promise<void>
   downloadActivityLog: () => Promise<void>
   deleteAllData: () => Promise<void>
   restoreFromSnapshot: (data: ExportFile) => Promise<void>
@@ -561,8 +561,9 @@ export const useStore = create<AppState>((set, get) => {
       })
     },
 
-    exportData: async () => {
-      const data = await buildExportFile()
+    exportData: async (boardIds) => {
+      let data = await buildExportFile()
+      if (boardIds) data = filterExportToBoards(data, boardIds)
       downloadExportFile(data)
       markExported()
     },

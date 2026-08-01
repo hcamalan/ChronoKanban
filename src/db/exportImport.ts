@@ -106,6 +106,21 @@ export function downloadExportFile(data: ExportFile) {
   URL.revokeObjectURL(url)
 }
 
+/** Trim an export file to a chosen subset of boards (and their buckets/tasks/categories/attachments). */
+export function filterExportToBoards(data: ExportFile, boardIds: string[]): ExportFile {
+  const keep = new Set(boardIds)
+  const tasks = data.tasks.filter((t) => keep.has(t.boardId))
+  const taskIds = new Set(tasks.map((t) => t.id))
+  return {
+    ...data,
+    boards: data.boards.filter((b) => keep.has(b.id)),
+    buckets: data.buckets.filter((b) => keep.has(b.boardId)),
+    categories: data.categories.filter((c) => keep.has(c.boardId)),
+    tasks,
+    attachments: data.attachments.filter((a) => taskIds.has(a.taskId)),
+  }
+}
+
 function isValidExportFile(data: unknown): data is ExportFile {
   if (typeof data !== 'object' || data === null) return false
   const d = data as Record<string, unknown>
